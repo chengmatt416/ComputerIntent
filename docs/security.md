@@ -8,5 +8,6 @@
 - CLI action files are treated as untrusted input: action type, non-empty intent, target shape, execution methods, and risk level are validated before a browser is launched.
 - Every successful skill exposes verifier evidence. If a success condition is unavailable, the skill reports that gap instead of claiming completion.
 - Claude Slow Path is disabled by default. When enabled, its request is redacted before transmission and credentials are never included in the payload.
+- The Antigravity computer-use MCP server exposes only start, observe, act, and close browser tools. It omits form input values from observation responses, redacts tool output, and delegates every action to the existing navigation, approval, trace, and verifier boundaries.
 
 Redaction is a defense-in-depth control, not permission to collect sensitive input unnecessarily. Callers should pass the minimum information required to perform an action.

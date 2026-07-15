@@ -302,7 +302,9 @@ export function createProductionExecutor(
         : {}),
     },
     navigationPolicy: {
-      allowedOrigins: config.allowedOrigins,
+      ...(config.allowedOrigins.length > 0
+        ? { allowedOrigins: config.allowedOrigins }
+        : {}),
       allowPrivateNetwork: config.allowPrivateNetwork,
     },
   });

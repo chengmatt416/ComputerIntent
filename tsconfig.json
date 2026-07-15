@@ -9,7 +9,8 @@
     { "path": "./packages/skills" },
     { "path": "./packages/controller" },
     { "path": "./packages/memory" },
-    { "path": "./apps/cli" }
+    { "path": "./apps/cli" },
+    { "path": "./apps/mcp-server" }
   ],
   "compilerOptions": {
     "target": "ES2022",
@@ -28,7 +29,8 @@
       "@lhic/verifier": ["packages/verifier/src/index.ts"],
       "@lhic/skills": ["packages/skills/src/index.ts"],
       "@lhic/controller": ["packages/controller/src/index.ts"],
-      "@lhic/memory": ["packages/memory/src/index.ts"]
+      "@lhic/memory": ["packages/memory/src/index.ts"],
+      "@lhic/mcp-server": ["apps/mcp-server/src/index.ts"]
     }
   }
 }

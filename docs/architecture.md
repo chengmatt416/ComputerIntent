@@ -8,6 +8,11 @@ intent → normalized UI state → local prediction → semantic action/skill �
 
 `@lhic/browser` calls the Playwright SDK directly and observes DOM/accessibility metadata, console errors, and network state. It deliberately has no MCP, OCR, VLM, mouse-coordinate, or model integration.
 
+`@lhic/mcp-server` is a separate external-agent integration for Antigravity.
+It exposes a small browser computer-use MCP surface that feeds validated
+semantic actions into the same local executor; it is outside the Fast Path and
+does not make Antigravity a Slow Path provider.
+
 `@lhic/controller` routes only low-risk predictions with confidence at least 0.8 to the Fast Path. Ambiguity goes to a provider-agnostic Slow Path interface, while high or unknown risk asks the user for confirmation.
 
 The executor repeats this check at its own boundary and binds an approval to a hash of the exact action with a short expiry. In production, `createProductionExecutor` consumes the validated runtime configuration so navigation targets, timeouts, and trace location cannot be silently omitted by a caller.

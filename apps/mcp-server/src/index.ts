@@ -1,0 +1,450 @@
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
+import { chromium, type Browser, type Page } from "playwright";
+
+import {
+  BrowserStateObserver,
+  createProductionExecutor,
+  type PlaywrightDirectExecutor,
+} from "@lhic/browser";
+import {
+  isSemanticAction,
+  type ActionExecutionResult,
+  type NormalizedUIState,
+  type SemanticAction,
+} from "@lhic/schema";
+import {
+  parseRuntimeConfig,
+  type ActionApproval,
+  type ProductionRuntimeConfig,
+} from "@lhic/security";
+import { redactPII } from "@lhic/trace";
+
+const MCP_SERVER_VERSION = "0.1.0";
+const directComputerActionTypes = new Set<SemanticAction["type"]>([
+  "navigate",
+  "click",
+  "fill",
+  "select",
+  "press",
+  "wait",
+]);
+
+export interface ComputerUseSnapshot {
+  state: NormalizedUIState;
+}
+
+export interface ComputerUseStartResult extends ComputerUseSnapshot {
+  navigation?: ActionExecutionResult;
+}
+
+export interface ComputerUseActionResult extends ComputerUseSnapshot {
+  result: ActionExecutionResult;
+}
+
+export interface ComputerUseSession {
+  start(url?: string): Promise<ComputerUseStartResult>;
+  observe(): Promise<ComputerUseSnapshot>;
+  act(
+    action: SemanticAction,
+    approval?: ActionApproval,
+  ): Promise<ComputerUseActionResult>;
+  close(): Promise<void>;
+}
+
+export interface PlaywrightComputerUseSessionOptions {
+  headless?: boolean;
+  runtimeConfig?: ProductionRuntimeConfig;
+}
+
+/**
+ * A single browser session owned by one MCP server process. The MCP boundary
+ * only exposes semantic actions; Playwright remains the local executor.
+ */
+export class PlaywrightComputerUseSession implements ComputerUseSession {
+  private browser: Browser | null = null;
+  private page: Page | null = null;
+  private observer: BrowserStateObserver | null = null;
+  private executor: PlaywrightDirectExecutor | null = null;
+  private taskId = this.createTaskId();
+
+  public constructor(
+    private readonly options: PlaywrightComputerUseSessionOptions = {},
+  ) {}
+
+  public async start(url?: string): Promise<ComputerUseStartResult> {
+    const { executor } = await this.ensureSession();
+    let navigation: ActionExecutionResult | undefined;
+
+    if (url !== undefined) {
+      navigation = await executor.execute({
+        type: "navigate",
+        intent: `Open ${url}`,
+        target: url,
+        methodPreference: ["api"],
+        riskLevel: "low",
+      });
+    }
+
+    const { state } = await this.observe();
+    return navigation ? { state, navigation } : { state };
+  }
+
+  public async observe(): Promise<ComputerUseSnapshot> {
+    const { observer } = await this.ensureStartedSession();
+    return { state: await observer.observe() };
+  }
+
+  public async act(
+    action: SemanticAction,
+    approval?: ActionApproval,
+  ): Promise<ComputerUseActionResult> {
+    const { executor } = await this.ensureStartedSession();
+    const result = await executor.execute(action, approval);
+    const { state } = await this.observe();
+    return { result, state };
+  }
+
+  public async close(): Promise<void> {
+    const browser = this.browser;
+    this.resetSession();
+    if (browser) {
+      await browser.close().catch(() => undefined);
+    }
+    this.taskId = this.createTaskId();
+  }
+
+  private async ensureSession(): Promise<{
+    page: Page;
+    observer: BrowserStateObserver;
+    executor: PlaywrightDirectExecutor;
+  }> {
+    if (this.page && this.observer && this.executor) {
+      return {
+        page: this.page,
+        observer: this.observer,
+        executor: this.executor,
+      };
+    }
+
+    const browser = await chromium.launch({
+      headless:
+        this.options.headless ?? process.env.LHIC_MCP_HEADLESS === "true",
+    });
+
+    try {
+      const page = await browser.newPage();
+      const observer = new BrowserStateObserver(page);
+      const executor = createProductionExecutor(
+        page,
+        this.options.runtimeConfig ?? parseRuntimeConfig(process.env),
+        { taskId: this.taskId },
+      );
+
+      this.browser = browser;
+      this.page = page;
+      this.observer = observer;
+      this.executor = executor;
+
+      browser.once("disconnected", () => this.resetSession());
+      page.once("close", () => this.resetSession());
+
+      return { page, observer, executor };
+    } catch (error) {
+      await browser.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async ensureStartedSession(): Promise<{
+    page: Page;
+    observer: BrowserStateObserver;
+    executor: PlaywrightDirectExecutor;
+  }> {
+    if (!this.browser || !this.page || !this.observer || !this.executor) {
+      throw new Error(
+        "No browser session is active. Call lhic_browser_start before observing or acting.",
+      );
+    }
+
+    return {
+      page: this.page,
+      observer: this.observer,
+      executor: this.executor,
+    };
+  }
+
+  private resetSession(): void {
+    this.observer?.dispose();
+    this.browser = null;
+    this.page = null;
+    this.observer = null;
+    this.executor = null;
+  }
+
+  private createTaskId(): string {
+    return `antigravity-${randomUUID().slice(0, 8)}`;
+  }
+}
+
+export const COMPUTER_USE_TOOLS = [
+  {
+    name: "lhic_browser_start",
+    description:
+      "Start a visible local browser session owned by LHIC. Optionally navigate to one URL, then inspect the returned structured state before acting.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Optional absolute http(s) URL to open.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "lhic_browser_observe",
+    description:
+      "Read LHIC's normalized DOM/accessibility browser state. Call before every action and after every result; input values are intentionally omitted.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "lhic_browser_act",
+    description:
+      "Execute one validated SemanticAction through LHIC's local Playwright executor. High- or unknown-risk actions need a matching human ActionApproval. Do not use raw coordinates, screenshots, page-evaluate JavaScript, or browser-native tool fallbacks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "object",
+          description:
+            "A SemanticAction: type, intent, target/value when needed, methodPreference, and riskLevel.",
+          properties: {
+            type: {
+              type: "string",
+              enum: ["navigate", "click", "fill", "select", "press", "wait"],
+            },
+            intent: { type: "string", minLength: 1 },
+            target: { type: "string" },
+            value: {},
+            methodPreference: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "string",
+                enum: [
+                  "api",
+                  "dom",
+                  "accessibility",
+                  "keyboard",
+                  "ocr",
+                  "vision",
+                  "mouse",
+                ],
+              },
+            },
+            riskLevel: {
+              type: "string",
+              enum: ["low", "medium", "high", "unknown"],
+            },
+          },
+          required: ["type", "intent", "methodPreference", "riskLevel"],
+          additionalProperties: false,
+        },
+        approval: {
+          type: "object",
+          description:
+            "A human-created ActionApproval bound to the exact high- or unknown-risk action. Never fabricate one.",
+          properties: {
+            approvalId: { type: "string" },
+            actionHash: { type: "string" },
+            approvedBy: { type: "string" },
+            approvedAt: { type: "string" },
+            expiresAt: { type: "string" },
+            signature: { type: "string" },
+          },
+          required: [
+            "approvalId",
+            "actionHash",
+            "approvedBy",
+            "approvedAt",
+            "expiresAt",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: ["action"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "lhic_browser_close",
+    description: "Close the local browser session owned by LHIC.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+export function createComputerUseServer(
+  session: ComputerUseSession = new PlaywrightComputerUseSession(),
+): Server {
+  const server = new Server(
+    { name: "lhic-computer-use", version: MCP_SERVER_VERSION },
+    {
+      capabilities: { tools: {} },
+      instructions:
+        "Use LHIC for browser computer use. Observe before and after each action. All browser actions must be SemanticActions executed with lhic_browser_act; high- and unknown-risk actions require a human approval.",
+    },
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: COMPUTER_USE_TOOLS,
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) =>
+    callComputerUseTool(session, request.params.name, request.params.arguments),
+  );
+
+  return server;
+}
+
+export async function callComputerUseTool(
+  session: ComputerUseSession,
+  name: string,
+  args: Record<string, unknown> | undefined,
+): Promise<CallToolResult> {
+  try {
+    switch (name) {
+      case "lhic_browser_start": {
+        const url = optionalString(args?.url, "url");
+        const result = await session.start(url);
+        return toolResult(
+          result,
+          result.navigation !== undefined && !result.navigation.success,
+        );
+      }
+      case "lhic_browser_observe":
+        return toolResult(await session.observe());
+      case "lhic_browser_act": {
+        const action = args?.action;
+        if (!isSemanticAction(action)) {
+          return toolError("action must be a valid SemanticAction.");
+        }
+        if (!directComputerActionTypes.has(action.type)) {
+          return toolError(
+            "action.type must be navigate, click, fill, select, press, or wait.",
+          );
+        }
+        const approval = args?.approval;
+        if (approval !== undefined && !isActionApproval(approval)) {
+          return toolError("approval must be a valid ActionApproval.");
+        }
+        const result = await session.act(action, approval);
+        return toolResult(result, !result.result.success);
+      }
+      case "lhic_browser_close":
+        await session.close();
+        return toolResult({ closed: true });
+      default:
+        return toolError(`Unknown LHIC computer-use tool: ${name}.`);
+    }
+  } catch (error) {
+    return toolError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function optionalString(value: unknown, name: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string when provided.`);
+  }
+  return value;
+}
+
+function isActionApproval(value: unknown): value is ActionApproval {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const approval = value as Partial<ActionApproval>;
+  return (
+    typeof approval.approvalId === "string" &&
+    typeof approval.actionHash === "string" &&
+    typeof approval.approvedBy === "string" &&
+    typeof approval.approvedAt === "string" &&
+    typeof approval.expiresAt === "string" &&
+    (approval.signature === undefined || typeof approval.signature === "string")
+  );
+}
+
+function toolResult(value: unknown, isError = false): CallToolResult {
+  const safeValue = redactPII(stripInputValues(value));
+  return {
+    content: [{ type: "text", text: JSON.stringify(safeValue, null, 2) }],
+    ...(isError ? { isError: true } : {}),
+  };
+}
+
+function toolError(message: string): CallToolResult {
+  return {
+    content: [{ type: "text", text: redactPII(message) }],
+    isError: true,
+  };
+}
+
+function stripInputValues(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const snapshot = value as Partial<ComputerUseSnapshot>;
+  if (!snapshot.state || !Array.isArray(snapshot.state.objects)) {
+    return value;
+  }
+
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      objects: snapshot.state.objects.map((object) => {
+        const safeObject = { ...object };
+        delete safeObject.value;
+        return safeObject;
+      }),
+    },
+  };
+}
+
+async function runStdioServer(): Promise<void> {
+  const session = new PlaywrightComputerUseSession();
+  const server = createComputerUseServer(session);
+  const shutdown = async (): Promise<void> => {
+    await session.close();
+    await server.close();
+  };
+
+  process.once("SIGINT", () => void shutdown());
+  process.once("SIGTERM", () => void shutdown());
+
+  await server.connect(new StdioServerTransport());
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  await runStdioServer();
+}
