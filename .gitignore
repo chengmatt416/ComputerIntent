@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+traces/
+screenshots/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
+__pycache__/
+*.pyc
+AGENTS.md
+CODEX_EXECUTION_PLAN.md

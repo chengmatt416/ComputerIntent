@@ -1,0 +1,35 @@
+Business Source License 1.1
+
+Parameters:
+
+Licensor: chengmatt416
+Licensed Work: LHIC (Local Human Intent Controller) and all associated modules in this repository.
+Additional Use Grant: You may use the Licensed Work for non-commercial, evaluation, testing, and development purposes. Any commercial production use or use to provide a competing browser automation or AI agent service requires a separate commercial license from the Licensor.
+Change Date: None (No automatic transition to an open-source or permissive license is promised).
+Change License: None (The Licensed Work remains permanently under the Business Source License 1.1 terms unless explicitly licensed otherwise by the Licensor).
+
+---
+
+License Text:
+
+The Licensor hereby grants you the right to copy and use the Licensed Work under the Business Source License 1.1 (the "License") subject to the terms below.
+
+1. Grant of License
+
+Subject to your compliance with the terms of this License, including the Additional Use Grant and the Change Date parameters above, the Licensor grants you a non-exclusive, non-transferable, royalty-free, worldwide license to copy, modify, create derivative works of, and use the Licensed Work.
+
+2. Restrictions
+
+You may not use the Licensed Work for any purpose that violates the Additional Use Grant. Any use of the Licensed Work in commercial production, or to provide a competing service, is strictly prohibited without a separate written license from the Licensor.
+
+3. Change to Open Source / Alternative License
+
+Unlike standard Business Source Licenses, this License does not promise or guarantee any Change Date or automatic transition to a Change License (such as MIT, Apache 2.0, or other OSI-approved permissive licenses). The Change Date is explicitly set to "None". Any transition to another license is at the sole discretion of the Licensor.
+
+4. Termination
+
+This License and the rights granted hereunder will terminate automatically if you fail to comply with any of its terms or conditions.
+
+5. Disclaimer of Warranty
+
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE LICENSOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE LICENSED WORK.
