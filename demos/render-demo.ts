@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import {
   access,
@@ -27,9 +28,13 @@ import {
   SkillStore,
   type SkillRecord,
 } from "@lhic/memory";
+import { createActionApproval } from "@lhic/security";
+import { appendTraceEvent } from "@lhic/trace";
 import type {
   ActionExecutionResult,
+  BrowserSemanticAction,
   SemanticAction,
+  UserIntent,
   VerificationResult,
 } from "@lhic/schema";
 
@@ -43,6 +48,9 @@ const workDirectory = join(tmpdir(), "lhic-demo-render");
 const videoWidth = 1920;
 const videoHeight = 1080;
 const frameRate = 24;
+const vendorOrigin = "https://vendor.techtools.qzz.io";
+const vendorStorefrontUrl = `${vendorOrigin}/`;
+const vendorFinanceUrl = `${vendorOrigin}/finance`;
 const kokoroPackageVersion = "0.5.0";
 const kokoroModelUrl =
   "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx";
@@ -90,12 +98,25 @@ interface AudioAssets {
   approvalEffect: string;
   introEffect: string;
   oneMinuteMusic: string;
+  transitionEffect: string;
   workflowEffect: string;
   fiveMinuteMusic: string;
 }
 
 async function main(): Promise<void> {
   const buildWeekOnly = process.argv.includes("--build-week");
+  const vendorLive = process.argv.includes("--vendor-live");
+  if (vendorLive && !buildWeekOnly) {
+    throw new Error("--vendor-live requires --build-week.");
+  }
+  const recordedVendorWorkflow = vendorLive
+    ? process.env.LHIC_VENDOR_WORKFLOW_RECORDING
+    : undefined;
+  if (recordedVendorWorkflow && !(await fileExists(recordedVendorWorkflow))) {
+    throw new Error(
+      "LHIC_VENDOR_WORKFLOW_RECORDING does not point to a readable video.",
+    );
+  }
   await assertFfmpegAvailable();
   await mkdir(outputDirectory, { recursive: true });
   const ttsConfiguration = await getKokoroTtsConfiguration();
@@ -109,7 +130,10 @@ async function main(): Promise<void> {
     runSelectorResilienceSimulation({ taskCount: 20, seed: 20_260_716 }),
   ]);
   const workflowVideos: WorkflowRecordings = {
-    browserHero: await recordBrowserHeroWorkflow(),
+    browserHero: vendorLive
+      ? (recordedVendorWorkflow ??
+        (await recordVendorLiveWorkflow(requireVendorFinanceCode())))
+      : await recordBrowserHeroWorkflow(),
     standard: await recordOperatorWorkflow("standard"),
     complex: await recordOperatorWorkflow("complex"),
   };
@@ -281,67 +305,78 @@ async function main(): Promise<void> {
   }
 
   await renderDemo(
-    "lhic-build-week-demo-commerce-learning.mp4",
+    vendorLive
+      ? "lhic-build-week-demo-vendor-live.mp4"
+      : "lhic-build-week-demo-commerce-learning.mp4",
     [
       {
         slide: slides.title,
-        duration: 8,
+        duration: vendorLive ? 6 : 8,
         voice:
           "Meet LHIC, the Local Human Intent Controller: computer-use automation with evidence, not guesswork.",
       },
       {
         slide: slides.problem,
-        duration: 11,
-        voice:
-          "Computer-use agents are powerful, but familiar tasks should not need a model round trip. Credentials, changing interfaces, and high-risk actions still need a boundary.",
+        duration: vendorLive ? 7 : 11,
+        voice: vendorLive
+          ? "Known browser work should not need repeated model reasoning. LHIC keeps it local, evidenced, and approval-bound."
+          : "Computer-use agents are powerful, but familiar tasks should not need a model round trip. Credentials, changing interfaces, and high-risk actions still need a boundary.",
       },
       {
         slide: slides.gpt56,
-        duration: 14,
-        voice:
-          "GPT-5.6 is LHIC's explicit Slow Path planner for uncertain work. Its structured response is redacted, schema-checked, policy-checked, and never bypasses approval or verification.",
+        duration: vendorLive ? 8 : 14,
+        voice: vendorLive
+          ? "Slow Path uses a typed, redacted plan. Verification, local learning, and approval gates remain mandatory."
+          : "The Slow Path is a typed planning boundary. This reproducible recording uses a deterministic, redacted plan fixture, then applies the exact same verification, trace, learning, and approval controls as a model-provided plan.",
       },
       {
         workflow: "browserHero",
-        duration: 58,
-        voice:
-          "This is a real local shopping site, not a dashboard. The first cart is a complex Slow Path: search, configure a keyboard, add it, open checkout, redeem a promotion after the checkout mutates, choose delivery, and verify the order preview. This credential-free recording uses a deterministic redacted plan fixture at the Slow Path boundary. Only when every action has verifier evidence does LHIC save a local verified skill. Watch the second fresh cart: the Fast Path reuses that learned plan directly. No model call. No MCP. It still refuses to place the order without human approval.",
+        duration: vendorLive ? 108 : 58,
+        voice: vendorLive
+          ? "This is the live vendor site, not an LHIC dashboard. First, the Slow Path builds an anonymous order: Test3 times three and Test2 times two, signs the checkout canvas, and commits only with an explicit approval. It then enters the real finance surface, prepares a 200 dollar inventory expense, and commits that second write with approval. Each low-risk action must return verifier evidence before its local skill is saved. Now watch a fresh browser context: the learned commerce and finance skills run directly through Playwright with zero model calls and zero MCP calls. Both new writes stop at the same local approval boundary."
+          : "This is a real local shopping site, not a dashboard. The first cart is a complex Slow Path: search, configure a keyboard, add it, open checkout, redeem a promotion after the checkout mutates, choose delivery, and verify the order preview. This credential-free recording uses a deterministic redacted plan fixture at the Slow Path boundary. Only when every action has verifier evidence does LHIC save a local verified skill. Watch the second fresh cart: the Fast Path reuses that learned plan directly. No model call. No MCP. It still refuses to place the order without human approval.",
       },
       {
         slide: slides.verification,
-        duration: 14,
-        voice:
-          "The learning rule is strict. A Slow Path plan becomes local skill memory only after every step returns verifier evidence. The next matched intent can then route through the Fast Path while keeping its risk boundary intact.",
+        duration: vendorLive ? 8 : 14,
+        voice: vendorLive
+          ? "Only verifier evidence earns a local skill. Missing proof is not success."
+          : "The learning rule is strict. A Slow Path plan becomes local skill memory only after every step returns verifier evidence. The next matched intent can then route through the Fast Path while keeping its risk boundary intact.",
       },
       {
         slide: slides.security,
-        duration: 15,
-        voice:
-          "Safety is enforced by the local executor. Sensitive values are redacted in traces, risky actions are approval-bound, and the Fast Path has no model or MCP dependency.",
+        duration: vendorLive ? 8 : 15,
+        voice: vendorLive
+          ? "Inputs are redacted. High-risk writes require human approval. Fast Path calls neither a model nor MCP."
+          : "Safety is enforced by the local executor. Sensitive values are redacted in traces, risky actions are approval-bound, and the Fast Path has no model or MCP dependency.",
       },
       {
         slide: slides.fastPath,
-        duration: 14,
-        voice:
-          "The local internal benchmark covers fifty controlled fixtures. Known Fast Path actions make zero model calls and every fixture has verifier evidence. This is scoped regression evidence, not a public-web claim.",
+        duration: vendorLive ? 8 : 14,
+        voice: vendorLive
+          ? "Known low-risk tasks use local Playwright: zero model calls and zero model tokens."
+          : "The local internal benchmark covers fifty controlled fixtures. Known Fast Path actions make zero model calls and every fixture has verifier evidence. This is scoped regression evidence, not a public-web claim.",
       },
       {
         slide: slides.codex,
-        duration: 12,
-        voice:
-          "I set the product direction, security boundaries, and acceptance criteria. Codex accelerated implementation, testing, debugging, packaging, and this reproducible evidence workflow.",
+        duration: vendorLive ? 7 : 12,
+        voice: vendorLive
+          ? "I set product and safety direction. Codex accelerated the implementation and evidence workflow."
+          : "I set the product direction, security boundaries, and acceptance criteria. Codex accelerated implementation, testing, debugging, packaging, and this reproducible evidence workflow.",
       },
       {
         slide: slides.quickStart,
-        duration: 13,
-        voice:
-          "Judges can run the safe local demo without an account or credential. Install dependencies, install Chromium, then run npm run demo to see evidence and the approval gate.",
+        duration: vendorLive ? 7 : 13,
+        voice: vendorLive
+          ? "Run the safe local demo, inspect its evidence, then decide your production policy."
+          : "Judges can run the safe local demo without an account or credential. Install dependencies, install Chromium, then run npm run demo to see evidence and the approval gate.",
       },
       {
         slide: slides.caveat,
-        duration: 12,
-        voice:
-          "GPT-5.6 provides intelligence. LHIC makes computer actions safe, deterministic, and verifiable. Measure real workflows in your own environment before making production claims.",
+        duration: vendorLive ? 6 : 12,
+        voice: vendorLive
+          ? "Measure real workflows in your environment. LHIC makes the result observable."
+          : "GPT-5.6 provides intelligence. LHIC makes computer actions safe, deterministic, and verifiable. Measure real workflows in your own environment before making production claims.",
       },
     ],
     slideFiles,
@@ -351,7 +386,9 @@ async function main(): Promise<void> {
   );
   renderedVideos.buildWeek = join(
     outputDirectory,
-    "lhic-build-week-demo-commerce-learning.mp4",
+    vendorLive
+      ? "lhic-build-week-demo-vendor-live.mp4"
+      : "lhic-build-week-demo-commerce-learning.mp4",
   );
 
   console.log(
@@ -387,6 +424,1282 @@ type WorkflowName = Exclude<keyof WorkflowRecordings, "browserHero">;
 interface RecordedWorkflowAction {
   action: SemanticAction;
   expectedFailure?: boolean;
+}
+
+type VendorPhase = "slow" | "fast";
+
+function requireVendorFinanceCode(): string {
+  const code = process.env.LHIC_DEMO_FINANCE_CODE?.trim();
+  if (!code) {
+    throw new Error(
+      "--vendor-live requires LHIC_DEMO_FINANCE_CODE so the finance credential never enters source control.",
+    );
+  }
+  return code;
+}
+
+async function recordVendorLiveWorkflow(financeCode: string): Promise<string> {
+  const priorCommerceRecording = process.env.LHIC_VENDOR_COMMERCE_RECORDING;
+  const priorMemoryDatabase = process.env.LHIC_VENDOR_MEMORY_DATABASE;
+  if (priorCommerceRecording || priorMemoryDatabase) {
+    if (!priorCommerceRecording || !priorMemoryDatabase) {
+      throw new Error(
+        "Resuming a vendor recording requires both LHIC_VENDOR_COMMERCE_RECORDING and LHIC_VENDOR_MEMORY_DATABASE.",
+      );
+    }
+    return recordVendorFinanceContinuation(
+      financeCode,
+      priorCommerceRecording,
+      priorMemoryDatabase,
+    );
+  }
+  const recordingDirectory = join(workDirectory, "recording", "vendor-live");
+  const output = join(recordingDirectory, "vendor-slow-to-fast.mp4");
+  const traceFilePath = join(workDirectory, "vendor-live-trace.jsonl");
+  await mkdir(recordingDirectory, { recursive: true });
+
+  const browser = await chromium.launch({ headless: true });
+  const database = createMemoryDatabase(
+    join(recordingDirectory, "selector-memory.sqlite"),
+  );
+  const selectorMemory = new SelectorMemory(database);
+  const skillStore = new SkillStore(database);
+  let slowRecording: string | undefined;
+  let fastRecording: string | undefined;
+
+  try {
+    const slowContext = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      recordVideo: {
+        dir: join(recordingDirectory, "slow"),
+        size: { width: 1280, height: 720 },
+      },
+    });
+    const slowPage = await slowContext.newPage();
+    const slowVideo = slowPage.video();
+    try {
+      const slowExecutor = createVendorExecutor(
+        slowPage,
+        "demo-vendor-slow-path",
+        traceFilePath,
+        selectorMemory,
+      );
+      const commerceSkill = await learnVendorPlan(
+        slowPage,
+        slowExecutor,
+        skillStore,
+        vendorCommerceSlowPathRequest(),
+        vendorCommerceSlowPathPlan(),
+        financeCode,
+        "slow",
+      );
+      await showVendorLearnedSkill(
+        slowPage,
+        commerceSkill,
+        "ORDER SKILL VERIFIED · LOCAL SQLITE",
+      );
+      await slowPage.waitForTimeout(2_600);
+
+      const signature = await drawAnonymousVendorSignature(
+        slowPage,
+        traceFilePath,
+        "demo-vendor-slow-path",
+      );
+      if (!signature.success) {
+        throw new Error(
+          signature.error ?? "Anonymous signature verification failed.",
+        );
+      }
+      await appendVendorOverlayLog(
+        slowPage,
+        "Anonymous signature drawn",
+        "Canvas stroke verifier passed; no name, email, or department supplied.",
+        "success",
+      );
+      await slowPage.waitForTimeout(1_250);
+
+      await executeAuthorizedVendorAction(
+        slowPage,
+        slowExecutor,
+        vendorOrderAction(),
+        "Explicit user authorization: submit the anonymous test order.",
+      );
+      await slowPage.waitForTimeout(2_800);
+
+      const financeSkill = await learnVendorPlan(
+        slowPage,
+        slowExecutor,
+        skillStore,
+        vendorFinanceSlowPathRequest(),
+        vendorFinanceSlowPathPlan(),
+        financeCode,
+        "slow",
+      );
+      await showVendorLearnedSkill(
+        slowPage,
+        financeSkill,
+        "FINANCE SKILL VERIFIED · LOCAL SQLITE",
+      );
+      await slowPage.waitForTimeout(2_300);
+
+      await executeAuthorizedVendorAction(
+        slowPage,
+        slowExecutor,
+        vendorExpenseAction(),
+        "Explicit user authorization: add the $200 inventory expense.",
+      );
+      await slowPage.waitForTimeout(3_200);
+
+      const fastContext = await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        recordVideo: {
+          dir: join(recordingDirectory, "fast"),
+          size: { width: 1280, height: 720 },
+        },
+      });
+      const fastPage = await fastContext.newPage();
+      const fastVideo = fastPage.video();
+      try {
+        const fastExecutor = createVendorExecutor(
+          fastPage,
+          "demo-vendor-fast-path",
+          traceFilePath,
+          selectorMemory,
+        );
+        await replayVendorFastPath(
+          fastPage,
+          fastExecutor,
+          commerceSkill,
+          vendorCommerceActions(),
+          vendorCommerceIntent(),
+          financeCode,
+          "commerce",
+        );
+        await fastPage.waitForTimeout(1_700);
+        await replayVendorFastPath(
+          fastPage,
+          fastExecutor,
+          financeSkill,
+          vendorFinanceActions(),
+          vendorFinanceIntent(),
+          financeCode,
+          "finance",
+        );
+        await fastPage.waitForTimeout(3_200);
+      } finally {
+        await fastContext.close();
+      }
+      if (!fastVideo) {
+        throw new Error(
+          "Playwright did not create the Fast Path vendor recording.",
+        );
+      }
+      fastRecording = await fastVideo.path();
+    } finally {
+      await slowContext.close();
+    }
+    if (!slowVideo) {
+      throw new Error(
+        "Playwright did not create the Slow Path vendor recording.",
+      );
+    }
+    slowRecording = await slowVideo.path();
+  } finally {
+    await browser.close();
+    database.close();
+  }
+
+  if (!slowRecording || !fastRecording) {
+    throw new Error("Vendor recording did not produce both workflow phases.");
+  }
+  await blendVendorRecordings(slowRecording, fastRecording, output);
+  return output;
+}
+
+async function recordVendorFinanceContinuation(
+  financeCode: string,
+  commerceRecording: string,
+  memoryDatabase: string,
+): Promise<string> {
+  if (
+    !(await fileExists(commerceRecording)) ||
+    !(await fileExists(memoryDatabase))
+  ) {
+    throw new Error(
+      "The recorded commerce phase or its local skill memory is unavailable.",
+    );
+  }
+  const recordingDirectory = join(
+    workDirectory,
+    "recording",
+    "vendor-live-continuation",
+  );
+  const output = join(recordingDirectory, "vendor-slow-to-fast.mp4");
+  const traceFilePath = join(
+    workDirectory,
+    "vendor-live-continuation-trace.jsonl",
+  );
+  await mkdir(recordingDirectory, { recursive: true });
+
+  const browser = await chromium.launch({ headless: true });
+  const database = createMemoryDatabase(memoryDatabase);
+  const selectorMemory = new SelectorMemory(database);
+  const skillStore = new SkillStore(database);
+  const commerceSkill = findVendorSkill(skillStore, "vendor-anonymous-order");
+  let financeSlowRecording: string | undefined;
+  let fastRecording: string | undefined;
+
+  try {
+    const financeSlowContext = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      recordVideo: {
+        dir: join(recordingDirectory, "finance-slow"),
+        size: { width: 1280, height: 720 },
+      },
+    });
+    const financeSlowPage = await financeSlowContext.newPage();
+    const financeSlowVideo = financeSlowPage.video();
+    try {
+      const slowExecutor = createVendorExecutor(
+        financeSlowPage,
+        "demo-vendor-slow-finance",
+        traceFilePath,
+        selectorMemory,
+      );
+      const financeSkill = await learnVendorPlan(
+        financeSlowPage,
+        slowExecutor,
+        skillStore,
+        vendorFinanceSlowPathRequest(),
+        vendorFinanceSlowPathPlan(),
+        financeCode,
+        "slow",
+      );
+      await showVendorLearnedSkill(
+        financeSlowPage,
+        financeSkill,
+        "FINANCE SKILL VERIFIED · LOCAL SQLITE",
+      );
+      await financeSlowPage.waitForTimeout(2_300);
+      await executeAuthorizedVendorAction(
+        financeSlowPage,
+        slowExecutor,
+        vendorExpenseAction(),
+        "Explicit user authorization: add the $200 inventory expense.",
+      );
+      await financeSlowPage.waitForTimeout(3_200);
+
+      const fastContext = await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        recordVideo: {
+          dir: join(recordingDirectory, "fast"),
+          size: { width: 1280, height: 720 },
+        },
+      });
+      const fastPage = await fastContext.newPage();
+      const fastVideo = fastPage.video();
+      try {
+        const fastExecutor = createVendorExecutor(
+          fastPage,
+          "demo-vendor-fast-path",
+          traceFilePath,
+          selectorMemory,
+        );
+        await replayVendorFastPath(
+          fastPage,
+          fastExecutor,
+          commerceSkill,
+          vendorCommerceActions(),
+          vendorCommerceIntent(),
+          financeCode,
+          "commerce",
+        );
+        await fastPage.waitForTimeout(1_700);
+        await replayVendorFastPath(
+          fastPage,
+          fastExecutor,
+          financeSkill,
+          vendorFinanceActions(),
+          vendorFinanceIntent(),
+          financeCode,
+          "finance",
+        );
+        await fastPage.waitForTimeout(3_200);
+      } finally {
+        await fastContext.close();
+      }
+      if (!fastVideo) {
+        throw new Error(
+          "Playwright did not create the resumed Fast Path recording.",
+        );
+      }
+      fastRecording = await fastVideo.path();
+    } finally {
+      await financeSlowContext.close();
+    }
+    if (!financeSlowVideo) {
+      throw new Error(
+        "Playwright did not create the resumed Slow Path recording.",
+      );
+    }
+    financeSlowRecording = await financeSlowVideo.path();
+  } finally {
+    await browser.close();
+    database.close();
+  }
+
+  if (!financeSlowRecording || !fastRecording) {
+    throw new Error(
+      "Vendor continuation did not produce both remaining phases.",
+    );
+  }
+  const combinedSlow = join(recordingDirectory, "vendor-combined-slow.mp4");
+  await blendVendorRecordings(
+    commerceRecording,
+    financeSlowRecording,
+    combinedSlow,
+  );
+  await blendVendorRecordings(combinedSlow, fastRecording, output);
+  return output;
+}
+
+function findVendorSkill(
+  skillStore: SkillStore,
+  operation: string,
+): SkillRecord {
+  const skill = skillStore.list().find((candidate) => {
+    const constraints = candidate.definition.constraints;
+    return (
+      constraints &&
+      typeof constraints === "object" &&
+      (constraints as Record<string, unknown>).operation === operation
+    );
+  });
+  if (!skill) {
+    throw new Error(`No verified local skill exists for ${operation}.`);
+  }
+  return skill;
+}
+
+function createVendorExecutor(
+  page: Page,
+  taskId: string,
+  traceFilePath: string,
+  selectorMemory: SelectorMemory,
+): PlaywrightDirectExecutor {
+  return new PlaywrightDirectExecutor(page, {
+    taskId,
+    traceFilePath,
+    selectorMemory,
+    navigationPolicy: { allowedOrigins: [vendorOrigin] },
+  });
+}
+
+async function learnVendorPlan(
+  page: Page,
+  executor: PlaywrightDirectExecutor,
+  skillStore: SkillStore,
+  request: SlowPathRequest,
+  plan: SlowPathResponse,
+  financeCode: string,
+  phase: VendorPhase,
+): Promise<SkillRecord> {
+  const learned = await new SlowPathLearningCoordinator(skillStore).execute(
+    request,
+    plan,
+    {
+      execute: async (action) => {
+        const execution = await executor.execute(
+          materializeVendorAction(action, financeCode),
+        );
+        await page.waitForTimeout(
+          action.intent === "sign in to the vendor finance dashboard"
+            ? 1_500
+            : 450,
+        );
+        const verification = await verifyVendorAction(page, action, execution);
+        await installVendorOverlay(page, phase);
+        await appendVendorOverlayLog(
+          page,
+          action.intent,
+          verification.evidence[0] ??
+            execution.error ??
+            "Verifier did not accept the step.",
+          execution.success && verification.success ? "success" : "blocked",
+          phase,
+        );
+        await page.waitForTimeout(execution.success ? 1_000 : 1_500);
+        return { execution, verification };
+      },
+    },
+  );
+  if (!learned.learnedSkill) {
+    throw new Error(
+      `Vendor ${phase} plan did not qualify for local skill learning.`,
+    );
+  }
+  return learned.learnedSkill;
+}
+
+async function replayVendorFastPath(
+  page: Page,
+  executor: PlaywrightDirectExecutor,
+  skill: SkillRecord,
+  actions: BrowserSemanticAction[],
+  intent: UserIntent,
+  financeCode: string,
+  workflow: "commerce" | "finance",
+): Promise<void> {
+  const decision = new FastPathRouter().decide(
+    {
+      predictedIntent: "form_filling",
+      skillName: skill.name,
+      confidence: 0.98,
+      evidence: ["Matched a verified local vendor skill."],
+    },
+    intent,
+    actions,
+  );
+  if (decision.path !== "fast") {
+    throw new Error(
+      `Vendor ${workflow} skill did not route Fast Path: ${decision.reason}`,
+    );
+  }
+
+  for (const action of actions) {
+    const execution = await executor.execute(
+      materializeVendorAction(action, financeCode),
+    );
+    await page.waitForTimeout(
+      action.intent === "sign in to the vendor finance dashboard" ? 1_500 : 450,
+    );
+    const verification = await verifyVendorAction(page, action, execution);
+    await installVendorOverlay(page, "fast");
+    await appendVendorOverlayLog(
+      page,
+      action.intent,
+      verification.evidence[0] ??
+        execution.error ??
+        "Verifier did not accept the step.",
+      execution.success && verification.success ? "success" : "blocked",
+      "fast",
+    );
+    if (!execution.success || !verification.success) {
+      throw new Error(
+        `Fast Path ${workflow} action failed: ${execution.error ?? action.intent}`,
+      );
+    }
+    await page.waitForTimeout(780);
+  }
+
+  await showVendorFastPathSkill(page, skill, workflow);
+  await page.waitForTimeout(1_250);
+  const blockedAction =
+    workflow === "commerce" ? vendorOrderAction() : vendorExpenseAction();
+  const blocked = await executor.execute(blockedAction);
+  if (blocked.success) {
+    throw new Error(
+      `Vendor ${workflow} write unexpectedly bypassed the approval boundary.`,
+    );
+  }
+  await appendVendorOverlayLog(
+    page,
+    blockedAction.intent,
+    "BLOCKED · no matching human approval in this fresh Fast Path session.",
+    "blocked",
+    "fast",
+  );
+}
+
+function vendorCommerceIntent() {
+  return {
+    goal: "Build an anonymous Test3 ×3 and Test2 ×2 vendor checkout preview.",
+    domain: "vendor.techtools.qzz.io",
+    constraints: {
+      anonymous: true,
+      operation: "vendor-anonymous-order",
+      products: ["Test3×3", "Test2×2"],
+    },
+    riskLevel: "low" as const,
+    requiresConfirmation: false,
+    missingInformation: [],
+  };
+}
+
+function vendorFinanceIntent() {
+  return {
+    goal: "Prepare a $200 inventory expense in the vendor finance system.",
+    domain: "vendor.techtools.qzz.io",
+    constraints: {
+      operation: "vendor-finance-expense",
+      category: "支出",
+      amount: 200,
+      note: "進貨",
+    },
+    riskLevel: "low" as const,
+    requiresConfirmation: false,
+    missingInformation: [],
+  };
+}
+
+function vendorCommerceSlowPathRequest(): SlowPathRequest {
+  return {
+    taskId: "demo-vendor-slow-commerce",
+    userIntent: vendorCommerceIntent(),
+    uiState: {
+      surface: "browser",
+      url: vendorStorefrontUrl,
+      objects: [],
+      signals: { matchedSkills: 0, liveSite: true, anonymousOrder: true },
+      capturedAt: "2026-07-17T00:00:00.000Z",
+    },
+    recentTrace: [],
+    reason: "complex_planning",
+  };
+}
+
+function vendorFinanceSlowPathRequest(): SlowPathRequest {
+  return {
+    taskId: "demo-vendor-slow-finance",
+    userIntent: vendorFinanceIntent(),
+    uiState: {
+      surface: "browser",
+      url: vendorFinanceUrl,
+      objects: [],
+      signals: { matchedSkills: 0, liveSite: true, financeWrite: true },
+      capturedAt: "2026-07-17T00:00:00.000Z",
+    },
+    recentTrace: [],
+    reason: "complex_planning",
+  };
+}
+
+function vendorCommerceSlowPathPlan(): SlowPathResponse {
+  return {
+    decision: "propose_plan",
+    message:
+      "Deterministic redacted fixture: prepare the anonymous vendor cart and verify every low-risk change.",
+    proposedActions: vendorCommerceActions(),
+  };
+}
+
+function vendorFinanceSlowPathPlan(): SlowPathResponse {
+  return {
+    decision: "propose_plan",
+    message:
+      "Deterministic redacted fixture: prepare a finance expense and preserve approval for the write.",
+    proposedActions: vendorFinanceActions(),
+  };
+}
+
+function vendorCommerceActions(): BrowserSemanticAction[] {
+  return [
+    {
+      type: "navigate",
+      intent: "open the anonymous vendor storefront",
+      target: vendorStorefrontUrl,
+      methodPreference: ["api", "dom"],
+      riskLevel: "low",
+    },
+    {
+      type: "wait",
+      intent: "wait for the live vendor catalog to finish loading",
+      target: 'button:has-text("Test3")',
+      value: 8_000,
+      methodPreference: ["dom"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "add Test3 to the anonymous cart (1 of 3)",
+      target: 'button:has-text("Test3")',
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "add Test3 to the anonymous cart (2 of 3)",
+      target: 'button:has-text("Test3")',
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "add Test3 to the anonymous cart (3 of 3)",
+      target: 'button:has-text("Test3")',
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "add Test2 to the anonymous cart (1 of 2)",
+      target: 'button:has-text("Test2")',
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "add Test2 to the anonymous cart (2 of 2)",
+      target: 'button:has-text("Test2")',
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "open the anonymous checkout surface",
+      target: "前往結帳",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "enter a non-identifying shopper label required by checkout",
+      target: 'input[placeholder="姓名"]',
+      value: "匿名示範",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "enter a non-identifying checkout email",
+      target: 'input[placeholder="Email"]',
+      value: "anonymous@example.invalid",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "enter a demo-only checkout department",
+      target: 'input[placeholder="部門"]',
+      value: "DEMO",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+  ];
+}
+
+function vendorFinanceActions(): BrowserSemanticAction[] {
+  return [
+    {
+      type: "navigate",
+      intent: "open the vendor finance sign-in surface",
+      target: vendorFinanceUrl,
+      methodPreference: ["api", "dom"],
+      riskLevel: "low",
+    },
+    {
+      type: "wait",
+      intent: "wait for the vendor finance sign-in form to finish loading",
+      target: 'input[type="password"]',
+      value: 8_000,
+      methodPreference: ["dom"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "enter the authorized vendor finance code",
+      target: 'input[type="password"]',
+      value: "[REDACTED]",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "click",
+      intent: "sign in to the vendor finance dashboard",
+      target: "登入",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "select",
+      intent: "select expense as the finance record type",
+      target: "select",
+      value: "支出",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "set the inventory expense amount to 200 dollars",
+      target: 'input[placeholder="金額"]',
+      value: "200",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+    {
+      type: "fill",
+      intent: "set the expense note to inventory purchasing",
+      target: 'input[placeholder="備註"], textarea[placeholder="備註"]',
+      value: "進貨",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    },
+  ];
+}
+
+function vendorOrderAction(): BrowserSemanticAction {
+  return {
+    type: "click",
+    intent: "confirm the anonymous Test3 and Test2 order",
+    target: "確認購買",
+    methodPreference: ["dom", "accessibility"],
+    riskLevel: "high",
+  };
+}
+
+function vendorExpenseAction(): BrowserSemanticAction {
+  return {
+    type: "click",
+    intent: "add the authorized 200 dollar inventory expense",
+    target: "新增",
+    methodPreference: ["dom", "accessibility"],
+    riskLevel: "high",
+  };
+}
+
+function materializeVendorAction(
+  action: SemanticAction,
+  financeCode: string,
+): BrowserSemanticAction {
+  if (action.scope === "os") {
+    throw new Error("Vendor demo only permits browser semantic actions.");
+  }
+  if (action.intent === "enter the authorized vendor finance code") {
+    return { ...action, value: financeCode };
+  }
+  return action;
+}
+
+async function executeAuthorizedVendorAction(
+  page: Page,
+  executor: PlaywrightDirectExecutor,
+  action: BrowserSemanticAction,
+  approvalReason: string,
+): Promise<void> {
+  const execution = await executor.execute(
+    action,
+    createActionApproval(action, "user-authorized-vendor-demo"),
+  );
+  await waitForVendorWriteCompletion(page, action);
+  const verification = await verifyVendorAction(page, action, execution);
+  await appendVendorOverlayLog(
+    page,
+    action.intent,
+    verification.evidence[0] ?? execution.error ?? approvalReason,
+    execution.success && verification.success ? "success" : "blocked",
+    "slow",
+  );
+  if (!execution.success || !verification.success) {
+    throw new Error(
+      `Authorized vendor action failed: ${execution.error ?? action.intent}`,
+    );
+  }
+}
+
+async function waitForVendorWriteCompletion(
+  page: Page,
+  action: BrowserSemanticAction,
+): Promise<void> {
+  if (action.intent === "confirm the anonymous Test3 and Test2 order") {
+    await page
+      .waitForFunction(
+        () => !document.body.innerText.includes("處理中"),
+        undefined,
+        { timeout: 12_000 },
+      )
+      .catch(() => {});
+    await page.waitForTimeout(500);
+    return;
+  }
+  if (action.intent === "add the authorized 200 dollar inventory expense") {
+    await page
+      .waitForFunction(
+        () =>
+          document.querySelector("table")?.innerText.includes("進貨") ?? false,
+        undefined,
+        { timeout: 8_000 },
+      )
+      .catch(() => {});
+    await page.waitForTimeout(500);
+    return;
+  }
+  await page.waitForTimeout(700);
+}
+
+async function verifyVendorAction(
+  page: Page,
+  action: SemanticAction,
+  execution: ActionExecutionResult,
+): Promise<VerificationResult> {
+  if (!execution.success) {
+    return {
+      success: false,
+      evidence: [],
+      error: execution.error ?? "The direct executor did not complete.",
+    };
+  }
+
+  const headingVisible = async (name: string) =>
+    page
+      .getByRole("heading", { name, exact: true })
+      .isVisible()
+      .catch(() => false);
+  const intent = action.intent;
+  if (intent === "open the anonymous vendor storefront") {
+    return vendorVerification(
+      await headingVisible("公司福利社"),
+      "Verifier observed the live vendor storefront heading.",
+    );
+  }
+  if (intent === "wait for the live vendor catalog to finish loading") {
+    return vendorVerification(
+      await page
+        .locator('button:has-text("Test3")')
+        .isVisible()
+        .catch(() => false),
+      "Verifier observed the live Test3 catalog control after loading.",
+    );
+  }
+  if (intent.startsWith("add Test3")) {
+    const expected = Number(intent.match(/\((\d) of 3\)/)?.[1]);
+    return vendorVerification(
+      (await vendorCartQuantity(page, "Test3")) === expected,
+      `Verifier observed Test3 quantity ${expected} in the live cart.`,
+    );
+  }
+  if (intent.startsWith("add Test2")) {
+    const expected = Number(intent.match(/\((\d) of 2\)/)?.[1]);
+    return vendorVerification(
+      (await vendorCartQuantity(page, "Test2")) === expected,
+      `Verifier observed Test2 quantity ${expected} in the live cart.`,
+    );
+  }
+  if (intent === "open the anonymous checkout surface") {
+    return vendorVerification(
+      await page
+        .locator("canvas")
+        .isVisible()
+        .catch(() => false),
+      "Verifier observed the anonymous checkout signature canvas.",
+    );
+  }
+  if (intent === "enter a non-identifying shopper label required by checkout") {
+    return vendorVerification(
+      (
+        await page
+          .locator('input[placeholder="姓名"]')
+          .inputValue()
+          .catch(() => "")
+      ).length > 0,
+      "Verifier observed the required non-identifying checkout label (redacted).",
+    );
+  }
+  if (intent === "enter a non-identifying checkout email") {
+    return vendorVerification(
+      (
+        await page
+          .locator('input[placeholder="Email"]')
+          .inputValue()
+          .catch(() => "")
+      ).length > 0,
+      "Verifier observed the non-identifying checkout email (redacted).",
+    );
+  }
+  if (intent === "enter a demo-only checkout department") {
+    return vendorVerification(
+      (
+        await page
+          .locator('input[placeholder="部門"]')
+          .inputValue()
+          .catch(() => "")
+      ).length > 0,
+      "Verifier observed the demo-only checkout department (redacted).",
+    );
+  }
+  if (intent === "open the vendor finance sign-in surface") {
+    return vendorVerification(
+      new URL(page.url()).pathname === "/finance",
+      "Verifier observed the vendor finance route.",
+    );
+  }
+  if (intent === "wait for the vendor finance sign-in form to finish loading") {
+    return vendorVerification(
+      await page
+        .locator('input[type="password"]')
+        .isVisible()
+        .catch(() => false),
+      "Verifier observed the vendor finance sign-in field after loading.",
+    );
+  }
+  if (intent === "enter the authorized vendor finance code") {
+    const valueLength = await page
+      .locator('input[type="password"]')
+      .inputValue()
+      .then((value) => value.length)
+      .catch(() => 0);
+    return vendorVerification(
+      valueLength > 0,
+      "Verifier observed a finance code in the field (redacted).",
+    );
+  }
+  if (intent === "sign in to the vendor finance dashboard") {
+    return vendorVerification(
+      await headingVisible("財務與管理看板"),
+      "Verifier observed the authenticated vendor finance dashboard.",
+    );
+  }
+  if (intent === "select expense as the finance record type") {
+    const selected = await page
+      .locator("select")
+      .inputValue()
+      .catch(() => "");
+    return vendorVerification(
+      selected === "支出",
+      "Verifier observed 支出 selected in the live finance form.",
+    );
+  }
+  if (intent === "set the inventory expense amount to 200 dollars") {
+    const amount = await page
+      .locator('input[placeholder="金額"]')
+      .inputValue()
+      .catch(() => "");
+    return vendorVerification(
+      amount === "200",
+      "Verifier observed the $200 amount in the live finance form.",
+    );
+  }
+  if (intent === "set the expense note to inventory purchasing") {
+    const note = await page
+      .locator('input[placeholder="備註"], textarea[placeholder="備註"]')
+      .inputValue()
+      .catch(() => "");
+    return vendorVerification(
+      note === "進貨",
+      "Verifier observed the inventory-purchasing note in the live finance form.",
+    );
+  }
+  if (intent === "confirm the anonymous Test3 and Test2 order") {
+    const cart = await vendorCartText(page);
+    const body = await page
+      .locator("body")
+      .innerText()
+      .catch(() => "");
+    const purchaseButtonVisible = await page
+      .getByRole("button", { name: "確認購買", exact: true })
+      .isVisible()
+      .catch(() => false);
+    return vendorVerification(
+      (!purchaseButtonVisible &&
+        !cart.includes("Test3") &&
+        !cart.includes("Test2")) ||
+        /(購買成功|下單成功|訂單.*成功|訂單已建立)/.test(body),
+      "Verifier observed the submitted order leave the anonymous checkout cart.",
+    );
+  }
+  if (intent === "add the authorized 200 dollar inventory expense") {
+    const table = await page
+      .locator("table")
+      .innerText()
+      .catch(() => "");
+    return vendorVerification(
+      table.includes("支出") &&
+        table.includes("進貨") &&
+        /\$?\s*200/.test(table),
+      "Verifier observed the $200 進貨 expense in the live finance ledger.",
+    );
+  }
+  return {
+    success: execution.evidence.length > 0,
+    evidence: execution.evidence,
+  };
+}
+
+function vendorVerification(
+  success: boolean,
+  evidence: string,
+): VerificationResult {
+  return { success, evidence: success ? [evidence] : [] };
+}
+
+async function vendorCartText(page: Page): Promise<string> {
+  return page
+    .locator("aside:not(#lhic-vendor-overlay)")
+    .innerText()
+    .catch(() => "");
+}
+
+async function vendorCartQuantity(
+  page: Page,
+  product: string,
+): Promise<number | undefined> {
+  const lines = (await vendorCartText(page))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const index = lines.indexOf(product);
+  if (index < 0) {
+    return undefined;
+  }
+  const quantity = lines.slice(index + 1).find((line) => /^\d+$/.test(line));
+  return quantity ? Number(quantity) : undefined;
+}
+
+async function drawAnonymousVendorSignature(
+  page: Page,
+  traceFilePath: string,
+  taskId: string,
+): Promise<ActionExecutionResult> {
+  const action: BrowserSemanticAction = {
+    type: "custom",
+    intent: "draw an anonymous checkout signature on the live canvas",
+    target: "canvas",
+    methodPreference: ["mouse"],
+    riskLevel: "low",
+  };
+  const startedAt = performance.now();
+  await appendTraceEvent(traceFilePath, {
+    eventId: randomUUID(),
+    taskId,
+    timestamp: new Date().toISOString(),
+    type: "action_started",
+    payload: { action },
+    riskLevel: action.riskLevel,
+  });
+
+  try {
+    const canvas = page.locator("canvas");
+    await canvas.scrollIntoViewIfNeeded();
+    const before = await canvas.evaluate((element) =>
+      (element as HTMLCanvasElement).toDataURL(),
+    );
+    const box = await canvas.boundingBox();
+    if (!box) {
+      throw new Error("Anonymous signature canvas is not visible.");
+    }
+    const points = [
+      [0.18, 0.63],
+      [0.32, 0.38],
+      [0.45, 0.67],
+      [0.58, 0.36],
+      [0.72, 0.61],
+      [0.84, 0.43],
+    ] as const;
+    await page.mouse.move(
+      box.x + box.width * points[0][0],
+      box.y + box.height * points[0][1],
+    );
+    await page.mouse.down();
+    for (const [x, y] of points.slice(1)) {
+      await page.mouse.move(box.x + box.width * x, box.y + box.height * y, {
+        steps: 8,
+      });
+    }
+    await page.mouse.up();
+    const after = await canvas.evaluate((element) =>
+      (element as HTMLCanvasElement).toDataURL(),
+    );
+    if (before === after) {
+      throw new Error(
+        "Signature canvas pixels did not change after the mouse stroke.",
+      );
+    }
+    const result: ActionExecutionResult = {
+      success: true,
+      method: "mouse",
+      latencyMs: Math.round(performance.now() - startedAt),
+      evidence: [
+        "Anonymous signature canvas pixels changed after the direct Playwright stroke.",
+      ],
+    };
+    await appendTraceEvent(traceFilePath, {
+      eventId: randomUUID(),
+      taskId,
+      timestamp: new Date().toISOString(),
+      type: "action_completed",
+      payload: { action, result },
+      riskLevel: action.riskLevel,
+    });
+    return result;
+  } catch (error) {
+    const result: ActionExecutionResult = {
+      success: false,
+      latencyMs: Math.round(performance.now() - startedAt),
+      evidence: [],
+      error:
+        error instanceof Error
+          ? error.message
+          : "Anonymous signature action failed.",
+    };
+    await appendTraceEvent(traceFilePath, {
+      eventId: randomUUID(),
+      taskId,
+      timestamp: new Date().toISOString(),
+      type: "action_failed",
+      payload: { action, result },
+      riskLevel: action.riskLevel,
+    });
+    return result;
+  }
+}
+
+async function installVendorOverlay(
+  page: Page,
+  phase: VendorPhase,
+): Promise<void> {
+  await page.evaluate((currentPhase) => {
+    const existing = document.querySelector("#lhic-vendor-overlay");
+    if (existing) {
+      existing.setAttribute("data-phase", currentPhase);
+      existing.querySelector("[data-lhic-phase]")!.textContent =
+        currentPhase === "fast"
+          ? "FAST PATH · LOCAL REPLAY"
+          : "SLOW PATH · VERIFIED LEARNING";
+      return;
+    }
+    const root = document.createElement("aside");
+    root.id = "lhic-vendor-overlay";
+    root.dataset.phase = currentPhase;
+    root.innerHTML = `
+      <style>
+        #lhic-vendor-overlay { position: fixed; z-index: 2147483647; right: 18px; bottom: 18px; width: min(356px, calc(100vw - 36px)); overflow: hidden; pointer-events: none; color: #eef7ff; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; border: 1px solid #65e8ff66; border-radius: 16px; background: linear-gradient(145deg, #081626ef, #0e1025ed); box-shadow: 0 22px 70px #02071388, inset 0 1px #ffffff14; backdrop-filter: blur(14px); animation: lhicVendorEnter .46s cubic-bezier(.2,.8,.2,1); }
+        #lhic-vendor-overlay[data-phase="fast"] { border-color: #b8f05a88; background: linear-gradient(145deg, #0d1b1bee, #111925ed); }
+        #lhic-vendor-overlay header { display: flex; align-items: center; gap: 9px; padding: 12px 14px 10px; border-bottom: 1px solid #ffffff16; }
+        #lhic-vendor-overlay .lhic-pulse { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #65e8ff; box-shadow: 0 0 15px #65e8ff; animation: lhicVendorPulse 1.25s ease-in-out infinite; }
+        #lhic-vendor-overlay[data-phase="fast"] .lhic-pulse { background: #b8f05a; box-shadow: 0 0 15px #b8f05a; }
+        #lhic-vendor-overlay strong { font-size: 10px; letter-spacing: .105em; }
+        #lhic-vendor-overlay [data-lhic-phase] { margin-left: auto; color: #8ca3bc; font: 800 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .055em; }
+        #lhic-vendor-overlay .lhic-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; padding: 10px 13px; }
+        #lhic-vendor-overlay .lhic-metrics span { display: block; padding: 7px 5px; color: #bbcae0; font: 700 8px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; border: 1px solid #ffffff14; border-radius: 7px; background: #ffffff08; }
+        #lhic-vendor-overlay .lhic-metrics b { display: block; margin-bottom: 3px; color: #65e8ff; font-size: 9px; }
+        #lhic-vendor-overlay[data-phase="fast"] .lhic-metrics b { color: #b8f05a; }
+        #lhic-vendor-overlay [data-lhic-skill] { display: none; margin: 0 13px 9px; padding: 8px 9px; color: #d9e8f6; font: 700 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid #9b8cff66; border-radius: 8px; background: #9b8cff14; animation: lhicVendorEnter .26s ease-out; }
+        #lhic-vendor-overlay[data-phase="fast"] [data-lhic-skill] { border-color: #b8f05a66; background: #b8f05a12; }
+        #lhic-vendor-overlay [data-lhic-log] { max-height: 132px; padding: 0 13px 12px; overflow: hidden; }
+        #lhic-vendor-overlay .lhic-line { margin-top: 5px; padding: 6px 7px; border-left: 2px solid #526b86; border-radius: 0 6px 6px 0; background: #ffffff08; animation: lhicVendorLog .25s ease-out; }
+        #lhic-vendor-overlay .lhic-line.success { border-left-color: #65e8ff; } #lhic-vendor-overlay[data-phase="fast"] .lhic-line.success { border-left-color: #b8f05a; }
+        #lhic-vendor-overlay .lhic-line.blocked { border-left-color: #ff788a; background: #ff788a15; }
+        #lhic-vendor-overlay .lhic-line b, #lhic-vendor-overlay .lhic-line span { display: block; }
+        #lhic-vendor-overlay .lhic-line b { color: #eaf4ff; font: 800 8px ui-monospace, SFMono-Regular, Menlo, monospace; }
+        #lhic-vendor-overlay .lhic-line span { margin-top: 3px; color: #aabbd1; font: 8px/1.28 ui-monospace, SFMono-Regular, Menlo, monospace; }
+        @keyframes lhicVendorEnter { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+        @keyframes lhicVendorLog { from { opacity: 0; transform: translateX(9px); } to { opacity: 1; transform: none; } }
+        @keyframes lhicVendorPulse { 50% { opacity: .3; transform: scale(.72); } }
+      </style>
+      <header><i class="lhic-pulse"></i><strong>LHIC · LIVE EVIDENCE</strong><span data-lhic-phase></span></header>
+      <div class="lhic-metrics"><span><b>EXECUTOR</b>PLAYWRIGHT</span><span><b>VERIFIER</b>REQUIRED</span><span><b>TRACE</b>REDACTED</span></div>
+      <div data-lhic-skill></div><section data-lhic-log></section>`;
+    root.querySelector("[data-lhic-phase]")!.textContent =
+      currentPhase === "fast"
+        ? "FAST PATH · LOCAL REPLAY"
+        : "SLOW PATH · VERIFIED LEARNING";
+    document.body.append(root);
+  }, phase);
+}
+
+async function appendVendorOverlayLog(
+  page: Page,
+  title: string,
+  evidence: string,
+  status: "success" | "blocked",
+  phase: VendorPhase = "slow",
+): Promise<void> {
+  await installVendorOverlay(page, phase);
+  await page.evaluate(
+    (event) => {
+      const log = document.querySelector(
+        "#lhic-vendor-overlay [data-lhic-log]",
+      );
+      if (!log) {
+        return;
+      }
+      const line = document.createElement("article");
+      line.className = `lhic-line ${event.status}`;
+      const heading = document.createElement("b");
+      heading.textContent =
+        event.status === "success"
+          ? "✓ VERIFIED · " + event.title
+          : "⛔ APPROVAL GATE · " + event.title;
+      const detail = document.createElement("span");
+      detail.textContent = event.evidence;
+      line.append(heading, detail);
+      log.append(line);
+      while (log.children.length > 4) {
+        log.firstElementChild?.remove();
+      }
+    },
+    { title, evidence, status },
+  );
+}
+
+async function showVendorLearnedSkill(
+  page: Page,
+  skill: SkillRecord,
+  label: string,
+): Promise<void> {
+  await installVendorOverlay(page, "slow");
+  await page.evaluate(
+    (value) => {
+      const skill = document.querySelector(
+        "#lhic-vendor-overlay [data-lhic-skill]",
+      ) as HTMLElement | null;
+      if (!skill) {
+        return;
+      }
+      skill.style.display = "block";
+      skill.textContent = `★ ${value.label} · ${value.lifecycle.toUpperCase()} · ${value.successCount} evidenced run · inputs redacted`;
+    },
+    { label, lifecycle: skill.lifecycle, successCount: skill.successCount },
+  );
+}
+
+async function showVendorFastPathSkill(
+  page: Page,
+  skill: SkillRecord,
+  workflow: "commerce" | "finance",
+): Promise<void> {
+  await installVendorOverlay(page, "fast");
+  await page.evaluate(
+    (value) => {
+      const skill = document.querySelector(
+        "#lhic-vendor-overlay [data-lhic-skill]",
+      ) as HTMLElement | null;
+      if (!skill) {
+        return;
+      }
+      skill.style.display = "block";
+      skill.textContent = `⚡ ${value.workflow.toUpperCase()} SKILL MATCH · ${value.lifecycle.toUpperCase()} · 0 MODEL · 0 MCP`;
+    },
+    { workflow, lifecycle: skill.lifecycle },
+  );
+}
+
+async function blendVendorRecordings(
+  slowRecording: string,
+  fastRecording: string,
+  output: string,
+): Promise<void> {
+  const slowDuration = await getNarrationDuration(slowRecording);
+  const transition = 0.7;
+  await execFfmpeg([
+    "-i",
+    slowRecording,
+    "-i",
+    fastRecording,
+    "-filter_complex",
+    `[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate}[left];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate}[right];[left][right]xfade=transition=fade:duration=${transition}:offset=${Math.max(0, slowDuration - transition).toFixed(3)}[video]`,
+    "-map",
+    "[video]",
+    "-an",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "23",
+    "-pix_fmt",
+    "yuv420p",
+    output,
+  ]);
 }
 
 async function recordBrowserHeroWorkflow(): Promise<string> {
@@ -1418,6 +2731,7 @@ async function renderDemo(
   const backgroundMusic = fileName.includes("1m")
     ? audioAssets.oneMinuteMusic
     : audioAssets.fiveMinuteMusic;
+  const transitionDuration = 0.38;
   let sceneOffset = 0;
   for (const [index, scene] of scenes.entries()) {
     const clip = join(workDirectory, "clips", `${fileName}-${index}.mp4`);
@@ -1459,29 +2773,82 @@ async function renderDemo(
       throw new Error("A demo scene requires a slide or workflow recording.");
     }
     clipFiles.push(clip);
-    sceneOffset += scene.duration;
+    sceneOffset += scene.duration - transitionDuration;
   }
 
-  const concatList = join(workDirectory, `${fileName}.txt`);
-  await writeFile(
-    concatList,
-    clipFiles
-      .map((file) => `file '${file.replaceAll("'", "'\\''")}'`)
-      .join("\n"),
-    "utf8",
+  await stitchDemoClips(
+    clipFiles,
+    scenes,
+    transitionDuration,
+    join(outputDirectory, fileName),
   );
+}
+
+async function stitchDemoClips(
+  clipFiles: string[],
+  scenes: Scene[],
+  transitionDuration: number,
+  output: string,
+): Promise<void> {
+  if (clipFiles.length !== scenes.length || clipFiles.length === 0) {
+    throw new Error(
+      "Demo timeline requires one rendered clip for every scene.",
+    );
+  }
+  if (clipFiles.length === 1) {
+    await execFfmpeg([
+      "-i",
+      clipFiles[0]!,
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      output,
+    ]);
+    return;
+  }
+
+  const args = clipFiles.flatMap((file) => ["-i", file]);
+  const filters: string[] = [];
+  let videoInput = "[0:v]";
+  let audioInput = "[0:a]";
+  let offset = scenes[0]!.duration - transitionDuration;
+  for (let index = 1; index < clipFiles.length; index += 1) {
+    const videoOutput = `[video-${index}]`;
+    const audioOutput = `[audio-${index}]`;
+    filters.push(
+      `${videoInput}[${index}:v]xfade=transition=fade:duration=${transitionDuration}:offset=${offset.toFixed(3)}${videoOutput}`,
+      `${audioInput}[${index}:a]acrossfade=d=${transitionDuration}:c1=tri:c2=tri${audioOutput}`,
+    );
+    videoInput = videoOutput;
+    audioInput = audioOutput;
+    offset += scenes[index]!.duration - transitionDuration;
+  }
   await execFfmpeg([
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    concatList,
-    "-c",
-    "copy",
+    ...args,
+    "-filter_complex",
+    filters.join(";"),
+    "-map",
+    videoInput,
+    "-map",
+    audioInput,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "24",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "48000",
     "-movflags",
     "+faststart",
-    join(outputDirectory, fileName),
+    output,
   ]);
 }
 
@@ -1515,7 +2882,7 @@ async function renderSlideClip(
     "-t",
     String(duration),
     "-vf",
-    `scale=${videoWidth}:${videoHeight},fade=t=in:st=0:d=0.55,fade=t=out:st=${Math.max(0, duration - 0.55)}:d=0.55`,
+    `scale=2112:1188,zoompan=z='min(zoom+0.00042,1.045)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${videoWidth}x${videoHeight}:fps=${frameRate}`,
     "-r",
     String(frameRate),
     "-filter_complex",
@@ -1569,7 +2936,7 @@ async function renderWorkflowClip(
     "-t",
     String(duration),
     "-vf",
-    `scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2:#07111f,tpad=stop_mode=clone:stop_duration=${duration},fade=t=in:st=0:d=0.55,fade=t=out:st=${Math.max(0, duration - 0.55)}:d=0.55`,
+    `scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2:#07111f,tpad=stop_mode=clone:stop_duration=${duration}`,
     "-r",
     String(frameRate),
     "-filter_complex",
@@ -1605,6 +2972,7 @@ async function createAudioAssets(): Promise<AudioAssets> {
     fiveMinuteMusic: join(soundtrackDirectory, "five-minute-bed.wav"),
     introEffect: join(soundtrackDirectory, "intro-effect.wav"),
     oneMinuteMusic: join(soundtrackDirectory, "one-minute-bed.wav"),
+    transitionEffect: join(soundtrackDirectory, "transition-effect.wav"),
     workflowEffect: join(soundtrackDirectory, "workflow-effect.wav"),
   };
   await Promise.all([
@@ -1617,6 +2985,10 @@ async function createAudioAssets(): Promise<AudioAssets> {
     renderToneEffect(
       "0.06*sin(2*PI*880*t)*exp(-7*t)+0.03*sin(2*PI*1320*t)*exp(-11*t)",
       assets.workflowEffect,
+    ),
+    renderToneEffect(
+      "0.045*sin(2*PI*(180+1320*t*t)*t)*exp(-3.8*t)+0.018*sin(2*PI*(740+600*t)*t)*exp(-6*t)",
+      assets.transitionEffect,
     ),
     renderToneEffect(
       "0.055*sin(2*PI*180*t)*exp(-4*t)+0.035*sin(2*PI*135*t)*exp(-6*t)",
@@ -1634,7 +3006,7 @@ async function renderAmbientBed(
     "-f",
     "lavfi",
     "-i",
-    "aevalsrc=0.024*sin(2*PI*55*t)+0.014*sin(2*PI*82.5*t)+0.008*sin(2*PI*110*t)+0.006*sin(2*PI*220*t)*(0.5+0.5*sin(2*PI*0.12*t)):s=48000",
+    "aevalsrc=0.020*sin(2*PI*55*t)+0.013*sin(2*PI*82.5*t)+0.008*sin(2*PI*110*t)+0.007*sin(2*PI*220*t)*(0.5+0.5*sin(2*PI*0.11*t))+0.004*sin(2*PI*440*t)*(0.5+0.5*sin(2*PI*0.37*t))+0.0025*sin(2*PI*880*t)*(0.5+0.5*sin(2*PI*0.73*t)):s=48000",
     "-t",
     String(duration),
     "-af",
@@ -1675,7 +3047,10 @@ function soundEffectForScene(
   if (scene.workflow) {
     return assets.workflowEffect;
   }
-  return index === 0 ? assets.introEffect : undefined;
+  if (index === 0) {
+    return assets.introEffect;
+  }
+  return index % 2 === 0 ? assets.transitionEffect : undefined;
 }
 
 function mixNarrationAudio(duration: number, hasSoundEffect: boolean): string {

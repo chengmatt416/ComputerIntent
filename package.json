@@ -25,6 +25,7 @@
     "mcp:config": "npm run build && node apps/cli/dist/main.js mcp config codex .",
     "demo:render": "tsx demos/render-demo.ts",
     "demo:render:build-week": "tsx demos/render-demo.ts --build-week",
+    "demo:render:build-week:vendor": "tsx demos/render-demo.ts --build-week --vendor-live",
     "pw:install": "playwright install chromium",
     "bench:internal": "tsx apps/cli/src/main.ts bench internal",
     "bench:simulate": "tsx apps/cli/src/main.ts bench simulate resilience",

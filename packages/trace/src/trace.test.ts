@@ -30,6 +30,27 @@ describe("trace redaction and event log", () => {
     expect(JSON.stringify(redacted)).not.toContain("also-do-not-log");
   });
 
+  it("redacts password-targeted browser form-fill values before persistence", () => {
+    const redacted = redactPII({
+      action: {
+        type: "fill",
+        target: 'input[type="password"]',
+        value: "credential-that-must-not-persist",
+      },
+    });
+
+    expect(JSON.stringify(redacted)).not.toContain(
+      "credential-that-must-not-persist",
+    );
+    expect(redacted).toEqual({
+      action: {
+        type: "fill",
+        target: 'input[type="password"]',
+        value: "[REDACTED]",
+      },
+    });
+  });
+
   it("appends and restores redacted JSONL trace events", async () => {
     const directory = await mkdtemp(join(tmpdir(), "lhic-trace-"));
     const filePath = join(directory, "events.jsonl");
