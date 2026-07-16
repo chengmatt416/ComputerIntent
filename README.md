@@ -78,6 +78,9 @@ See the [GPT-5.6 integration guide](docs/gpt-5.6-integration.md) for the
 schema, safety boundary, and failure behavior. Never put a key in an action
 file, trace, repository, screenshot, or demo recording.
 
+See the [0.1.2 release notes](docs/release-notes-0.1.2.md) for the exact
+release-candidate evidence and the remaining publication gates.
+
 ### Published CLI commands (after the current release is verified)
 
 After the current npm release passes `npm run package:published-smoke -- 0.1.2`,

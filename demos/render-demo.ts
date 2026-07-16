@@ -78,6 +78,7 @@ interface AudioAssets {
 }
 
 async function main(): Promise<void> {
+  const buildWeekOnly = process.argv.includes("--build-week");
   await assertFfmpegAvailable();
   await mkdir(outputDirectory, { recursive: true });
   const ttsConfiguration = await getKokoroTtsConfiguration();
@@ -97,51 +98,238 @@ async function main(): Promise<void> {
   const slides = createSlides(internalBenchmark, selectorSimulation);
   const slideFiles = await renderSlides(slides);
   const audioAssets = await createAudioAssets();
+  const renderedVideos: Record<string, string> = {};
+
+  if (!buildWeekOnly) {
+    await renderDemo(
+      "lhic-demo-1m.mp4",
+      [
+        {
+          slide: slides.title,
+          duration: 6,
+          voice:
+            "Meet LHIC: local-first browser automation with evidence, not guesswork.",
+        },
+        {
+          slide: slides.fastPath,
+          duration: 9,
+          voice:
+            "On familiar, low-risk workflows, the Fast Path stays local. That removes the model round trip and its token cost.",
+        },
+        {
+          workflow: "standard",
+          duration: 15,
+          voice:
+            "This is a real application screen. The live Operator Console records each semantic action, its execution method, latency, and verifier evidence as the workflow progresses.",
+        },
+        {
+          slide: slides.learning,
+          duration: 9,
+          voice:
+            "LHIC learns only from successful, evidenced execution. Verified patterns can become trusted local skills over time.",
+        },
+        {
+          slide: slides.mcp,
+          duration: 8,
+          voice:
+            "MCP exposes browser control, runtime state, and redacted learning metadata without putting MCP in the Fast Path.",
+        },
+        {
+          slide: slides.resilience,
+          duration: 7,
+          voice:
+            "Semantic targeting is tested against changing layouts in a controlled simulation. The result is observable.",
+        },
+        {
+          slide: slides.cost,
+          duration: 6,
+          voice:
+            "Known Fast Path actions make zero LLM calls and use zero LLM tokens.",
+        },
+      ],
+      slideFiles,
+      workflowVideos,
+      ttsConfiguration,
+      audioAssets,
+    );
+    renderedVideos.oneMinute = join(outputDirectory, "lhic-demo-1m.mp4");
+
+    await renderDemo(
+      "lhic-demo-5m.mp4",
+      [
+        {
+          slide: slides.title,
+          duration: 12,
+          voice:
+            "Welcome to LHIC, the Local Human Intent Controller. It turns intent into deterministic browser actions while keeping the known, low-risk path local, inspectable, and measurable.",
+        },
+        {
+          slide: slides.problem,
+          duration: 14,
+          voice:
+            "Known tasks include queue search, filtering, validation, and review preparation. Sending each one to a model adds latency, token spend, and failure points. LHIC uses model planning only when needed.",
+        },
+        {
+          slide: slides.architecture,
+          duration: 16,
+          voice:
+            "The execution loop is direct. Intent becomes a semantic action. Local Playwright performs it. The verifier returns evidence. Redacted traces and memory preserve what happened. Fast Path has no MCP dependency and no model call in this loop.",
+        },
+        {
+          slide: slides.fastPath,
+          duration: 16,
+          voice:
+            "These figures are from the current local controlled benchmark: fifty fixtures, zero model calls per task, and a fully verified result set. They are reproducible local measurements, not a claim about every website or a market comparison.",
+        },
+        {
+          workflow: "standard",
+          duration: 22,
+          voice:
+            "Here is the first live workflow. The application on the left is the target surface. The Operator Console on the right is not a mock status card: it streams action start, the selected execution method, evidence, and verified completion as the user interface changes.",
+        },
+        {
+          slide: slides.verification,
+          duration: 16,
+          voice:
+            "Verification changes the contract. LHIC does not call a click successful because an agent says so. It records the method, checks the resulting state, and makes failure visible. Without evidence, there is no success signal to promote.",
+        },
+        {
+          slide: slides.learning,
+          duration: 18,
+          voice:
+            "Learning is deliberately conservative. A Slow Path plan becomes a redacted skill only when every proposed action succeeds with non-empty verifier evidence. Repeated evidence promotes a pattern from verified, to habit, to trusted—while keeping it locally inspectable.",
+        },
+        {
+          slide: slides.mcp,
+          duration: 16,
+          voice:
+            "The MCP server exposes the runtime to an external agent. It supports semantic browser actions and read-only inspection of runtime state, skill lifecycle, and selector-memory counters. Requests are serialized to prevent action races.",
+        },
+        {
+          workflow: "complex",
+          duration: 36,
+          voice:
+            "Now we move into a higher-complexity exception workflow. The operator searches a queue, filters to a region, opens a case, assigns an owner, sets priority, runs reconciliation, and waits for the validation state. Every transition appears in the live log with its evidence. Watch the second fill: the application changes the original input name after the first action, and LHIC recovers through an already verified stable selector.",
+        },
+        {
+          slide: slides.selectorMemory,
+          duration: 16,
+          voice:
+            "Selector memory is not a blind cache. After success, LHIC retains a stable local candidate: element identity or semantic strategy. When the original selector fails, the runtime tests that verified candidate and records the healed path as evidence.",
+        },
+        {
+          workflow: "complex",
+          duration: 36,
+          voice:
+            "The same exception task continues through a multi-step review surface. The application updates from queue to detail to reconciliation status, while the console keeps the sequence readable: action, target, execution method, latency, and evidence. This is the difference between automation that merely runs and automation that can explain itself.",
+        },
+        {
+          slide: slides.resilience,
+          duration: 18,
+          voice:
+            "The resilience result comes from an explicitly limited local ablation across five form layouts. Semantic targeting completes twenty of twenty tasks, while the static-selector baseline completes four. This is useful regression evidence—not a substitute for measuring your own production environment.",
+        },
+        {
+          slide: slides.cost,
+          duration: 16,
+          voice:
+            "Cost is precise. Known Fast Path actions make zero LLM calls, so token cost is zero. Browser infrastructure, real sites, and Slow Path planning still cost money. LHIC removes model spend, but not other costs.",
+        },
+        {
+          slide: slides.security,
+          duration: 16,
+          voice:
+            "Speed never overrides policy. Observations omit input values. Traces redact sensitive data. High-risk or side-effecting targets require human approval. The next live segment shows that gate before a publish operation can leave review.",
+        },
+        {
+          workflow: "complex",
+          duration: 17,
+          voice:
+            "The final publish action is intentionally blocked. The console records the reason: a human approval is required. The application stays in review mode, proving that the safety boundary is enforced by the local executor rather than by a presentation layer.",
+        },
+        {
+          slide: slides.quickStart,
+          duration: 15,
+          voice:
+            "To use LHIC locally, install Node and Chromium, start the runtime, run preflight, and print the reviewed MCP configuration. Then measure the workflows that matter in your environment.",
+        },
+      ],
+      slideFiles,
+      workflowVideos,
+      ttsConfiguration,
+      audioAssets,
+    );
+    renderedVideos.fiveMinute = join(outputDirectory, "lhic-demo-5m.mp4");
+  }
 
   await renderDemo(
-    "lhic-demo-1m.mp4",
+    "lhic-build-week-demo-2m36s.mp4",
     [
       {
         slide: slides.title,
-        duration: 6,
+        duration: 8,
         voice:
-          "Meet LHIC: local-first browser automation with evidence, not guesswork.",
+          "Meet LHIC, the Local Human Intent Controller: computer-use automation with evidence, not guesswork.",
       },
       {
-        slide: slides.fastPath,
-        duration: 9,
+        slide: slides.problem,
+        duration: 11,
         voice:
-          "On familiar, low-risk workflows, the Fast Path stays local. That removes the model round trip and its token cost.",
+          "Computer-use agents are powerful, but familiar tasks should not need a model round trip. Credentials, changing interfaces, and high-risk actions still need a boundary.",
+      },
+      {
+        slide: slides.gpt56,
+        duration: 14,
+        voice:
+          "GPT-5.6 is LHIC's explicit Slow Path planner for uncertain work. Its structured response is redacted, schema-checked, policy-checked, and never bypasses approval or verification.",
       },
       {
         workflow: "standard",
+        duration: 18,
+        voice:
+          "This is a real local application workflow. The console records the semantic action, direct execution method, elapsed time, and verifier evidence while the browser state changes.",
+      },
+      {
+        slide: slides.verification,
+        duration: 12,
+        voice:
+          "LHIC does not accept an agent's claim that a click worked. The verifier observes the outcome. Without evidence, the task is not a success signal.",
+      },
+      {
+        workflow: "complex",
+        duration: 27,
+        voice:
+          "In this exception workflow, LHIC searches, filters, assigns, and reconciles a local case. When the interface renames an input, it recovers through a previously verified selector. The final publish attempt remains blocked until a human approves it.",
+      },
+      {
+        slide: slides.security,
         duration: 15,
         voice:
-          "This is a real application screen. The live Operator Console records each semantic action, its execution method, latency, and verifier evidence as the workflow progresses.",
+          "Safety is enforced by the local executor. Sensitive values are redacted in traces, risky actions are approval-bound, and the Fast Path has no model or MCP dependency.",
       },
       {
-        slide: slides.learning,
-        duration: 9,
+        slide: slides.fastPath,
+        duration: 14,
         voice:
-          "LHIC learns only from successful, evidenced execution. Verified patterns can become trusted local skills over time.",
+          "The local internal benchmark covers fifty controlled fixtures. Known Fast Path actions make zero model calls and every fixture has verifier evidence. This is scoped regression evidence, not a public-web claim.",
       },
       {
-        slide: slides.mcp,
-        duration: 8,
+        slide: slides.codex,
+        duration: 12,
         voice:
-          "MCP exposes browser control, runtime state, and redacted learning metadata without putting MCP in the Fast Path.",
+          "I set the product direction, security boundaries, and acceptance criteria. Codex accelerated implementation, testing, debugging, packaging, and this reproducible evidence workflow.",
       },
       {
-        slide: slides.resilience,
-        duration: 7,
+        slide: slides.quickStart,
+        duration: 13,
         voice:
-          "Semantic targeting is tested against changing layouts in a controlled simulation. The result is observable.",
+          "Judges can run the safe local demo without an account or credential. Install dependencies, install Chromium, then run npm run demo to see evidence and the approval gate.",
       },
       {
-        slide: slides.cost,
-        duration: 6,
+        slide: slides.caveat,
+        duration: 12,
         voice:
-          "Known Fast Path actions make zero LLM calls and use zero LLM tokens.",
+          "GPT-5.6 provides intelligence. LHIC makes computer actions safe, deterministic, and verifiable. Measure real workflows in your own environment before making production claims.",
       },
     ],
     slideFiles,
@@ -149,118 +337,15 @@ async function main(): Promise<void> {
     ttsConfiguration,
     audioAssets,
   );
-
-  await renderDemo(
-    "lhic-demo-5m.mp4",
-    [
-      {
-        slide: slides.title,
-        duration: 12,
-        voice:
-          "Welcome to LHIC, the Local Human Intent Controller. It turns intent into deterministic browser actions while keeping the known, low-risk path local, inspectable, and measurable.",
-      },
-      {
-        slide: slides.problem,
-        duration: 14,
-        voice:
-          "Known tasks include queue search, filtering, validation, and review preparation. Sending each one to a model adds latency, token spend, and failure points. LHIC uses model planning only when needed.",
-      },
-      {
-        slide: slides.architecture,
-        duration: 16,
-        voice:
-          "The execution loop is direct. Intent becomes a semantic action. Local Playwright performs it. The verifier returns evidence. Redacted traces and memory preserve what happened. Fast Path has no MCP dependency and no model call in this loop.",
-      },
-      {
-        slide: slides.fastPath,
-        duration: 16,
-        voice:
-          "These figures are from the current local controlled benchmark: fifty fixtures, zero model calls per task, and a fully verified result set. They are reproducible local measurements, not a claim about every website or a market comparison.",
-      },
-      {
-        workflow: "standard",
-        duration: 22,
-        voice:
-          "Here is the first live workflow. The application on the left is the target surface. The Operator Console on the right is not a mock status card: it streams action start, the selected execution method, evidence, and verified completion as the user interface changes.",
-      },
-      {
-        slide: slides.verification,
-        duration: 16,
-        voice:
-          "Verification changes the contract. LHIC does not call a click successful because an agent says so. It records the method, checks the resulting state, and makes failure visible. Without evidence, there is no success signal to promote.",
-      },
-      {
-        slide: slides.learning,
-        duration: 18,
-        voice:
-          "Learning is deliberately conservative. A Slow Path plan becomes a redacted skill only when every proposed action succeeds with non-empty verifier evidence. Repeated evidence promotes a pattern from verified, to habit, to trusted—while keeping it locally inspectable.",
-      },
-      {
-        slide: slides.mcp,
-        duration: 16,
-        voice:
-          "The MCP server exposes the runtime to an external agent. It supports semantic browser actions and read-only inspection of runtime state, skill lifecycle, and selector-memory counters. Requests are serialized to prevent action races.",
-      },
-      {
-        workflow: "complex",
-        duration: 36,
-        voice:
-          "Now we move into a higher-complexity exception workflow. The operator searches a queue, filters to a region, opens a case, assigns an owner, sets priority, runs reconciliation, and waits for the validation state. Every transition appears in the live log with its evidence. Watch the second fill: the application changes the original input name after the first action, and LHIC recovers through an already verified stable selector.",
-      },
-      {
-        slide: slides.selectorMemory,
-        duration: 16,
-        voice:
-          "Selector memory is not a blind cache. After success, LHIC retains a stable local candidate: element identity or semantic strategy. When the original selector fails, the runtime tests that verified candidate and records the healed path as evidence.",
-      },
-      {
-        workflow: "complex",
-        duration: 36,
-        voice:
-          "The same exception task continues through a multi-step review surface. The application updates from queue to detail to reconciliation status, while the console keeps the sequence readable: action, target, execution method, latency, and evidence. This is the difference between automation that merely runs and automation that can explain itself.",
-      },
-      {
-        slide: slides.resilience,
-        duration: 18,
-        voice:
-          "The resilience result comes from an explicitly limited local ablation across five form layouts. Semantic targeting completes twenty of twenty tasks, while the static-selector baseline completes four. This is useful regression evidence—not a substitute for measuring your own production environment.",
-      },
-      {
-        slide: slides.cost,
-        duration: 16,
-        voice:
-          "Cost is precise. Known Fast Path actions make zero LLM calls, so token cost is zero. Browser infrastructure, real sites, and Slow Path planning still cost money. LHIC removes model spend, but not other costs.",
-      },
-      {
-        slide: slides.security,
-        duration: 16,
-        voice:
-          "Speed never overrides policy. Observations omit input values. Traces redact sensitive data. High-risk or side-effecting targets require human approval. The next live segment shows that gate before a publish operation can leave review.",
-      },
-      {
-        workflow: "complex",
-        duration: 17,
-        voice:
-          "The final publish action is intentionally blocked. The console records the reason: a human approval is required. The application stays in review mode, proving that the safety boundary is enforced by the local executor rather than by a presentation layer.",
-      },
-      {
-        slide: slides.quickStart,
-        duration: 15,
-        voice:
-          "To use LHIC locally, install Node and Chromium, start the runtime, run preflight, and print the reviewed MCP configuration. Then measure the workflows that matter in your environment.",
-      },
-    ],
-    slideFiles,
-    workflowVideos,
-    ttsConfiguration,
-    audioAssets,
+  renderedVideos.buildWeek = join(
+    outputDirectory,
+    "lhic-build-week-demo-2m36s.mp4",
   );
 
   console.log(
     JSON.stringify(
       {
-        oneMinute: join(outputDirectory, "lhic-demo-1m.mp4"),
-        fiveMinute: join(outputDirectory, "lhic-demo-5m.mp4"),
+        videos: renderedVideos,
         benchmark: internalBenchmark.metrics,
         selectorSimulation: {
           taskCount: selectorSimulation.taskCount,
@@ -620,6 +705,27 @@ function createSlides(
         { label: "Trace", value: "Redacted", detail: "No credential logging" },
       ],
     },
+    gpt56: {
+      id: "gpt-5-6",
+      eyebrow: "GPT-5.6 SLOW PATH",
+      title: "Model intelligence stays inside a typed safety boundary.",
+      body: "For ambiguous work, GPT-5.6 returns a strict structured plan. LHIC redacts sensitive fields before the request, uses store: false, and validates every proposed action before execution.",
+      note: "Disabled by default · 30-second fail-closed timeout · schema, policy, approval, and verifier checks remain mandatory.",
+      accent: "violet",
+      cards: [
+        { label: "Output", value: "Structured", detail: "Strict JSON schema" },
+        {
+          label: "Storage",
+          value: "store: false",
+          detail: "No request persistence",
+        },
+        {
+          label: "Authority",
+          value: "Bounded",
+          detail: "Never bypasses policy",
+        },
+      ],
+    },
     fastPath: {
       id: "fast-path",
       eyebrow: "MEASURED LOCALLY",
@@ -789,6 +895,31 @@ function createSlides(
         { label: "1", value: "Install", detail: "Node 24 + Chromium" },
         { label: "2", value: "Verify", detail: "npm run preflight" },
         { label: "3", value: "Connect", detail: "npm run mcp:config" },
+      ],
+    },
+    codex: {
+      id: "codex-collaboration",
+      eyebrow: "CODEX COLLABORATION",
+      title: "Human direction. Codex-assisted engineering.",
+      body: "The maintainer set the product, threat-model, and release decisions. Codex accelerated implementation, test repair, package verification, benchmark tooling, and documentation while every delivered claim remained evidence-bound.",
+      note: "Official Codex /feedback evidence is recorded separately when it is available.",
+      accent: "cyan",
+      cards: [
+        {
+          label: "Human",
+          value: "Decides",
+          detail: "Product and safety scope",
+        },
+        {
+          label: "Codex",
+          value: "Accelerates",
+          detail: "Build, test, and docs",
+        },
+        {
+          label: "Evidence",
+          value: "Verified",
+          detail: "CI and local commands",
+        },
       ],
     },
     caveat: {

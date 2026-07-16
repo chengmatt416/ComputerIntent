@@ -10,6 +10,10 @@ open-weight `Kokoro-82M` model, and edits the following 1080p MP4 files into
 - `lhic-demo-5m.mp4` — a five-minute walkthrough with dynamic UI mutation,
   selector-memory recovery, reconciliation evidence, and a policy-blocked
   publish action that visibly requires human approval.
+- `lhic-build-week-demo-2m36s.mp4` — a Build Week submission cut under three
+  minutes. It includes GPT-5.6's validated Slow Path role, live local browser
+  workflows, verifier evidence, an approval gate, benchmark scope, and Codex
+  collaboration. Render only this cut with `npm run demo:render:build-week`.
 
 The renderer requires the project Chromium runtime, `ffmpeg`, and Python 3.11
 through 3.13. On first run it creates an isolated environment and downloads the
