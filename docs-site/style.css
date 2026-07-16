@@ -1176,11 +1176,13 @@ footer {
     }
     
     header, header.scrolled {
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
         transform: none;
-        width: auto;
+        width: 100%;
+        margin: 0;
         border-radius: 0;
         border-top: none;
         border-left: none;
