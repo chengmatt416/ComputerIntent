@@ -59,7 +59,13 @@ still require a matching human approval.
 
 Deploy the Appwrite Function and create the TablesDB tables described in
 [`services/appwrite-shared-skills`](../services/appwrite-shared-skills). Then
-run:
+run the guided setup in a terminal:
+
+```bash
+lhic shared enable
+```
+
+Or provide the values explicitly for scripts and CI:
 
 ```bash
 lhic shared enable \

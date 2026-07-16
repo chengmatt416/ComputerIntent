@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from "node:url";
+
 import { readTraceEvents, summarizeTraceEvents } from "@lhic/trace";
 import { inspectGlobalControlCapability } from "@lhic/skills";
 
@@ -21,8 +23,37 @@ import { runActionFile } from "./run-action.js";
 import { runSelectorResilienceSimulation } from "./selector-resilience-simulation.js";
 import { runSharedCommand } from "./shared-skills.js";
 import { startLocalRuntime } from "./start.js";
+import {
+  cliUsage,
+  createTerminalPrompter,
+  guideCliArguments,
+} from "./interactive.js";
 
-async function main(argumentsList: string[]): Promise<void> {
+export async function runCli(argumentsList: string[]): Promise<void> {
+  if (isHelpRequest(argumentsList[0])) {
+    console.log(cliUsage);
+    return;
+  }
+  const prompter = createTerminalPrompter();
+  try {
+    await runGuidedCli(argumentsList, prompter);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "LHIC failed.");
+    process.exitCode = 1;
+  } finally {
+    prompter.close();
+  }
+}
+
+async function runGuidedCli(
+  argumentsList: string[],
+  prompter: ReturnType<typeof createTerminalPrompter>,
+): Promise<void> {
+  const guidedArguments = await guideCliArguments(argumentsList, prompter);
+  await runCommand(guidedArguments);
+}
+
+async function runCommand(argumentsList: string[]): Promise<void> {
   const [command, subcommand, argument] = argumentsList;
   if (command === "start") {
     const result = await startLocalRuntime(subcommand);
@@ -128,10 +159,7 @@ async function main(argumentsList: string[]): Promise<void> {
     );
     return;
   }
-  console.error(
-    "Usage: lhic start [memory-database] | lhic shared <enable|login|disable|status|sync|list> [options] | lhic preflight | lhic global doctor | lhic run action <action-file> [approval-file] | lhic bench internal | lhic bench simulate resilience [task-count] [seed] | lhic bench readiness <workarena|webarena> | lhic bench validate-evidence <file> | lhic mcp config <antigravity|codex|claude-code|vscode> [workspace-root] | lhic trace inspect <trace-file>",
-  );
-  process.exitCode = 1;
+  throw new Error(cliUsage);
 }
 
 function parseIntegerArgument(
@@ -148,4 +176,10 @@ function parseIntegerArgument(
   return parsed;
 }
 
-void main(process.argv.slice(2));
+function isHelpRequest(command: string | undefined): boolean {
+  return command === "help" || command === "--help" || command === "-h";
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  void runCli(process.argv.slice(2));
+}

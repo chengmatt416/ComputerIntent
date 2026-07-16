@@ -97,7 +97,14 @@ redacted `lhic_runtime_status`, `lhic_skills_list`, and
 
 Deploy the reviewed Appwrite Function template in
 [`services/appwrite-shared-skills`](services/appwrite-shared-skills), then
-enable the registry for a workspace:
+enable the registry for a workspace. In a terminal, the short command guides
+you through the Appwrite endpoint, project, function URL, and Magic URL email:
+
+```bash
+npx @pinyencheng/lhic shared enable
+```
+
+The explicit form remains available for scripts and CI:
 
 ```bash
 npx @pinyencheng/lhic shared enable \
@@ -114,6 +121,16 @@ cache. Use `lhic shared status`, `lhic shared sync --force`, and
 `lhic shared list` to inspect it. Only approved low-risk browser skills with a
 unique local operation/UI-fingerprint match can enter Fast Path; no Fast Path
 request accesses the network.
+
+Running `lhic` with no command opens the same terminal guide. It also asks for
+missing required values for `mcp config`, `run action`, benchmark readiness and
+evidence validation, and trace inspection. Supplying every argument keeps the
+commands non-interactive for scripts and CI.
+
+Single-purpose command groups are shortened too: `lhic global` runs the
+desktop capability doctor, `lhic bench simulate` runs the resilience
+simulation, `lhic mcp` starts MCP configuration, and `lhic trace` starts trace
+inspection.
 
 Run internal regression benchmarks:
 
