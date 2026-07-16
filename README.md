@@ -4,6 +4,11 @@ LHIC is a secure, high-performance, local-first browser and desktop automation
 runtime designed to translate human intent into deterministic, verifiable
 computer actions.
 
+**The secure execution runtime for computer-use agents.** GPT-5.6 can handle
+ambiguous Slow Path planning through a strict, redacted schema; LHIC validates,
+executes, verifies, and audits actions locally. The Fast Path never calls a
+model or MCP server.
+
 ## 🚀 Key Features
 
 - **Fast Path Execution Engine**: Executes common browser tasks (login, forms, search, navigation) locally using Playwright and high-level skills, bypassing LLMs entirely. Each Fast Path action has **zero LLM calls** and therefore incurs no LLM-token cost; latency and success claims are reported only from the included controlled benchmarks.
@@ -44,6 +49,31 @@ npm ci
 npm run pw:install
 npm run build
 ```
+
+Run the credential-free local Judge Demo. It executes a real browser fixture,
+verifies the result, and shows that a destructive intent is approval-gated:
+
+```bash
+npm run demo
+```
+
+The published CLI provides the equivalent `npx @pinyencheng/lhic demo`
+command. It requires Node.js 24 and a local Playwright Chromium installation.
+The package declares support for macOS, Windows, and Linux; native desktop
+control has additional platform permissions described in the
+[global control guide](docs/global-control.md).
+
+To include a real GPT-5.6 Slow Path planning request in the demo, set an API
+key only in the process environment. The provider sends a redacted request,
+uses `store: false`, and remains disabled unless explicitly enabled:
+
+```bash
+OPENAI_SLOW_PATH_ENABLED=true OPENAI_API_KEY=... npm run demo
+```
+
+See the [GPT-5.6 integration guide](docs/gpt-5.6-integration.md) for the
+schema, safety boundary, and failure behavior. Never put a key in an action
+file, trace, repository, screenshot, or demo recording.
 
 Initialize the local-first runtime and its persistent SQLite skill database.
 This preloads the shipped `download_file`, `fill_form`, `login`, `search`, and
@@ -143,6 +173,22 @@ Run selector resilience simulation:
 ```bash
 npx @pinyencheng/lhic bench simulate resilience
 ```
+
+## Build Week evidence
+
+Judge-facing material is collected in the following documents:
+
+- [Judge guide](docs/judge-guide.md): 60-second and extended verification paths.
+- [GPT-5.6 integration](docs/gpt-5.6-integration.md): runtime role and trust boundary.
+- [Build Week changelog](docs/build-week-changelog.md): dated commit evidence.
+- [Benchmark methodology](docs/benchmark-methodology.md): controlled-fixture scope and limitations.
+- [Reproducibility](docs/reproducibility.md), [troubleshooting](docs/troubleshooting.md), and [known limitations](docs/known-limitations.md).
+- [Codex collaboration](docs/codex-usage.md) and the [recording script](docs/demo-script.md).
+
+The remaining submission-only evidence—public video URL, Devpost entry,
+official `/feedback` session ID, clean-room platform matrix, and release
+publication—must be supplied and verified at submission time. LHIC does not
+claim these are complete before that evidence exists.
 
 ## 📄 License
 

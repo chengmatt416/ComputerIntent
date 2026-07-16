@@ -47,6 +47,7 @@ export interface BenchmarkMetrics {
 
 export interface InternalBenchmarkReport {
   fixtureCount: number;
+  results: BenchmarkTaskResult[];
   metrics: BenchmarkMetrics;
   passCriteria: {
     taskSuccessRate: boolean;
@@ -169,6 +170,7 @@ export async function runInternalBenchmark(
   const passCriteria = assessBenchmark(metrics);
   return {
     fixtureCount: fixtures.length,
+    results,
     metrics,
     passCriteria,
     passed: Object.values(passCriteria).every(Boolean),

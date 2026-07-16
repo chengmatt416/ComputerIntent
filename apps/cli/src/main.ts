@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readTraceEvents, summarizeTraceEvents } from "@lhic/trace";
 import { inspectGlobalControlCapability } from "@lhic/skills";
 
 import { runInternalBenchmark } from "./internal-benchmark.js";
+import { runJudgeDemo } from "./demo.js";
 import {
   readExternalBenchmarkEvidence,
   validateExternalBenchmarkEvidence,
@@ -60,6 +63,14 @@ async function runCommand(argumentsList: string[]): Promise<void> {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
+  if (command === "demo") {
+    const report = await runJudgeDemo();
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.passed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (command === "shared") {
     const result = await runSharedCommand(subcommand, argumentsList.slice(2));
     console.log(JSON.stringify(result, null, 2));
@@ -95,6 +106,10 @@ async function runCommand(argumentsList: string[]): Promise<void> {
   }
   if (command === "bench" && subcommand === "internal") {
     const report = await runInternalBenchmark();
+    const outputFile = parseOutputFile(argumentsList);
+    if (outputFile) {
+      await writeBenchmarkOutput(outputFile, report);
+    }
     console.log(JSON.stringify(report, null, 2));
     if (!report.passed) {
       process.exitCode = 1;
@@ -174,6 +189,34 @@ function parseIntegerArgument(
     throw new Error(`${name} must be a safe integer.`);
   }
   return parsed;
+}
+
+function parseOutputFile(argumentsList: string[]): string | undefined {
+  if (argumentsList.length === 2) {
+    return undefined;
+  }
+  if (
+    argumentsList.length !== 4 ||
+    argumentsList[2] !== "--output" ||
+    !argumentsList[3]
+  ) {
+    throw new Error(
+      "Internal benchmark accepts only --output <path> in addition to its command.",
+    );
+  }
+  return argumentsList[3];
+}
+
+async function writeBenchmarkOutput(
+  outputFile: string,
+  report: Awaited<ReturnType<typeof runInternalBenchmark>>,
+): Promise<void> {
+  const resolvedOutputFile = resolve(outputFile);
+  await mkdir(dirname(resolvedOutputFile), { recursive: true });
+  await writeFile(resolvedOutputFile, `${JSON.stringify(report, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
 }
 
 function isHelpRequest(command: string | undefined): boolean {

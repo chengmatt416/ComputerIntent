@@ -1,0 +1,32 @@
+# Reproducibility
+
+## Supported runtime
+
+- Node.js 24.x (required by `node:sqlite`)
+- macOS, Windows, or Linux for browser workflows
+- Playwright Chromium for the local demo and browser tests
+
+Global desktop controls use native OS APIs and have additional setup and
+permission requirements described in [global control](global-control.md).
+
+## Clean local checkout
+
+```bash
+npm ci
+npm run pw:install
+npm run typecheck
+npm test
+npm run demo
+npm run bench:internal
+```
+
+The safe demo needs no API key. To test optional GPT-5.6 planning, set
+`OPENAI_SLOW_PATH_ENABLED=true` and `OPENAI_API_KEY` in the shell only. Never
+write the key to a file or include it in test fixtures.
+
+## Evidence to record before submission
+
+For every environment, record the OS release, Node version, Playwright version,
+browser revision, exact commit SHA, command output, start/end time, and any
+failure. A clean-room three-platform matrix and a published-package smoke test
+are still required before claiming cross-platform `npx` success.

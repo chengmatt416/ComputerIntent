@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "start": "npm run build && node apps/cli/dist/main.js start",
+    "demo": "tsx apps/cli/src/main.ts demo",
     "mcp:config": "npm run build && node apps/cli/dist/main.js mcp config codex .",
     "demo:render": "tsx demos/render-demo.ts",
     "pw:install": "playwright install chromium",

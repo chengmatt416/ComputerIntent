@@ -7,7 +7,7 @@
 - Production navigation requires an HTTPS origin allowlist and rejects private-network targets, URL credentials, and non-HTTP(S) protocols.
 - CLI action files are treated as untrusted input: action type, non-empty intent, target shape, execution methods, and risk level are validated before a browser is launched.
 - Every successful skill exposes verifier evidence. If a success condition is unavailable, the skill reports that gap instead of claiming completion.
-- Claude Slow Path is disabled by default. When enabled, its request is redacted before transmission and credentials are never included in the payload.
+- Claude and GPT-5.6 Slow Path providers are disabled by default. When enabled, their requests are redacted before transmission and credentials are never included in the payload. The GPT-5.6 provider uses the Responses API with `store: false`, a strict JSON Schema response, a bounded timeout, and post-response semantic-action validation.
 - The Antigravity computer-use MCP server exposes only start, observe, act, and close browser tools. It omits form input values from observation responses, redacts tool output, and delegates every action to the existing navigation, approval, trace, and verifier boundaries.
 
 Redaction is a defense-in-depth control, not permission to collect sensitive input unnecessarily. Callers should pass the minimum information required to perform an action.

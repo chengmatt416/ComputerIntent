@@ -7,7 +7,7 @@ export interface CliPrompter {
 }
 
 export const cliUsage =
-  "Usage: lhic [start [memory-database] | shared <enable|login|disable|status|sync|list> [options] | preflight | global doctor | run action <action-file> [approval-file] | bench internal | bench simulate resilience [task-count] [seed] | bench readiness <workarena|webarena> | bench validate-evidence <file> | mcp config <antigravity|codex|claude-code|vscode> [workspace-root] | trace inspect <trace-file>]";
+  "Usage: lhic [start [memory-database] | demo | shared <enable|login|disable|status|sync|list> [options] | preflight | global doctor | run action <action-file> [approval-file] | bench internal [--output <path>] | bench simulate resilience [task-count] [seed] | bench readiness <workarena|webarena> | bench validate-evidence <file> | mcp config <antigravity|codex|claude-code|vscode> [workspace-root] | trace inspect <trace-file>]";
 
 export function createTerminalPrompter(): CliPrompter {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -63,6 +63,7 @@ export async function guideCliArguments(
 async function chooseRootCommand(prompter: CliPrompter): Promise<string[]> {
   const choice = await askChoice(prompter, "What would you like LHIC to do", [
     "start",
+    "demo",
     "preflight",
     "global doctor",
     "run action",
