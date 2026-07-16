@@ -32,7 +32,6 @@
     "access": "public"
   },
   "bundleDependencies": [
-    "@napi-rs/keyring",
     "@lhic/browser",
     "@lhic/controller",
     "@lhic/memory",

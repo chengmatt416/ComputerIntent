@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -223,6 +224,20 @@ function isHelpRequest(command: string | undefined): boolean {
   return command === "help" || command === "--help" || command === "-h";
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isCliEntryPoint()) {
   void runCli(process.argv.slice(2));
+}
+
+export function isCliEntryPoint(
+  executablePath = process.argv[1],
+  modulePath = fileURLToPath(import.meta.url),
+): boolean {
+  if (!executablePath) {
+    return false;
+  }
+  try {
+    return realpathSync(executablePath) === realpathSync(modulePath);
+  } catch {
+    return false;
+  }
 }
