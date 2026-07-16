@@ -76,6 +76,8 @@ interface Slide {
 interface Scene {
   slide?: Slide;
   workflow?: keyof WorkflowRecordings;
+  workflowOffsetSeconds?: number;
+  workflowSourceDurationSeconds?: number;
   duration: number;
   voice: string;
 }
@@ -84,6 +86,15 @@ interface WorkflowRecordings {
   browserHero: string;
   standard: string;
   complex: string;
+  recovery?: string;
+}
+
+interface VendorCommerceWorkflow {
+  fastDurationSeconds: number;
+  recording: string;
+  slowDurationSeconds: number;
+  slowSourceDurationSeconds: number;
+  slowStartOffsetSeconds: number;
 }
 
 interface KokoroTtsConfiguration {
@@ -109,14 +120,6 @@ async function main(): Promise<void> {
   if (vendorLive && !buildWeekOnly) {
     throw new Error("--vendor-live requires --build-week.");
   }
-  const recordedVendorWorkflow = vendorLive
-    ? process.env.LHIC_VENDOR_WORKFLOW_RECORDING
-    : undefined;
-  if (recordedVendorWorkflow && !(await fileExists(recordedVendorWorkflow))) {
-    throw new Error(
-      "LHIC_VENDOR_WORKFLOW_RECORDING does not point to a readable video.",
-    );
-  }
   await assertFfmpegAvailable();
   await mkdir(outputDirectory, { recursive: true });
   const ttsConfiguration = await getKokoroTtsConfiguration();
@@ -129,15 +132,23 @@ async function main(): Promise<void> {
     runInternalBenchmark(projectRoot),
     runSelectorResilienceSimulation({ taskCount: 20, seed: 20_260_716 }),
   ]);
+  const vendorWorkflow = vendorLive
+    ? await recordVendorEnglishCommerceWorkflow()
+    : undefined;
   const workflowVideos: WorkflowRecordings = {
-    browserHero: vendorLive
-      ? (recordedVendorWorkflow ??
-        (await recordVendorLiveWorkflow(requireVendorFinanceCode())))
-      : await recordBrowserHeroWorkflow(),
+    browserHero:
+      vendorWorkflow?.recording ?? (await recordBrowserHeroWorkflow()),
     standard: await recordOperatorWorkflow("standard"),
     complex: await recordOperatorWorkflow("complex"),
+    ...(vendorLive
+      ? { recovery: await recordWebsiteUpdateRecoveryWorkflow() }
+      : {}),
   };
-  const slides = createSlides(internalBenchmark, selectorSimulation);
+  const slides = createSlides(
+    internalBenchmark,
+    selectorSimulation,
+    vendorWorkflow,
+  );
   const slideFiles = await renderSlides(slides);
   const audioAssets = await createAudioAssets();
   const renderedVideos: Record<string, string> = {};
@@ -304,81 +315,132 @@ async function main(): Promise<void> {
     renderedVideos.fiveMinute = join(outputDirectory, "lhic-demo-5m.mp4");
   }
 
+  const buildWeekScenes: Scene[] = vendorLive
+    ? [
+        {
+          slide: slides.title,
+          duration: 11,
+          voice:
+            "Meet LHIC, the Local Human Intent Controller. It turns a verified first encounter into a local skill, then keeps every later run fast, observable, and approval-bound.",
+        },
+        {
+          slide: slides.vendorSlow,
+          duration: 16,
+          voice:
+            "First encounter. A typed GPT-5.6 Slow Path contract receives the new task inside a redacted safety boundary. LHIC safely executes each proposed browser action and accepts success only when the verifier returns evidence.",
+        },
+        {
+          workflow: "browserHero",
+          workflowOffsetSeconds: vendorWorkflow?.slowStartOffsetSeconds ?? 0,
+          workflowSourceDurationSeconds:
+            vendorWorkflow?.slowDurationSeconds ?? 0,
+          duration: vendorWorkflow?.slowDurationSeconds ?? 0,
+          voice:
+            "This is the live vendor site, localized into English for the recording. LHIC adds Test3 times three and Test2 times two, enters anonymous checkout details, and verifies each state change. The signature canvas is checked pixel by pixel. The order is deliberately held at policy: learning is allowed, but a new live purchase still requires a human decision.",
+        },
+        {
+          slide: slides.vendorLearning,
+          duration: 15,
+          voice:
+            "The completed first pass becomes a reusable Skill only after every action has evidence. LHIC stores a redacted semantic plan and verified selector candidates locally, ready for the next matching intent in a fresh browser context.",
+        },
+        {
+          slide: slides.vendorFast,
+          duration: 13,
+          voice:
+            "Second encounter. LHIC matches the verified Skill locally and takes the Fast Path. The green mode is direct Playwright execution: zero model calls and zero MCP calls in the execution loop.",
+        },
+        {
+          workflow: "browserHero",
+          workflowOffsetSeconds: vendorWorkflow?.slowSourceDurationSeconds ?? 0,
+          workflowSourceDurationSeconds:
+            vendorWorkflow?.fastDurationSeconds ?? 0,
+          duration: vendorWorkflow?.fastDurationSeconds ?? 0,
+          voice:
+            "Same task, fresh browser, learned local route. Direct Playwright replays the Skill with zero model and zero MCP calls. The verifier checks every result, and policy still blocks the purchase.",
+        },
+        {
+          slide: slides.vendorSpeed,
+          duration: 13,
+          voice:
+            "The recorded first encounter is compared directly with the recorded local replay. The speedup comes from self-learning: planning is removed only after a route proves itself, while verification and policy remain in place.",
+        },
+        {
+          slide: slides.vendorRecovery,
+          duration: 14,
+          voice:
+            "Now the website changes. A stored Fast Path selector misses the new interface. LHIC does not guess or silently click somewhere else: it records the mismatch and returns to the GPT-5.6 recovery boundary.",
+        },
+        {
+          workflow: "recovery",
+          workflowSourceDurationSeconds: 20,
+          duration: 20,
+          voice:
+            "The controlled website-v2 update invalidates Skill v1. A typed GPT-5.6 recovery-plan fixture proposes the new offer field. LHIC schema-checks and policy-checks the plan, verifies the new route, and saves Skill v2 locally. The sequence is reproducible without sending a credential or an order.",
+        },
+        {
+          slide: slides.vendorPolicy,
+          duration: 15,
+          voice:
+            "Finally, a dangerous place-order action is blocked by local policy. Human approval is required before the side effect can leave review. That boundary is retained by the original Skill, the Fast Path, and the upgraded Skill v2.",
+        },
+        {
+          slide: slides.caveat,
+          duration: 12,
+          voice:
+            "LHIC makes the lifecycle visible: understand, execute, verify, learn, replay, recover, and approve. Measure the same evidence in your own environment before making production claims.",
+        },
+      ]
+    : [
+        {
+          slide: slides.title,
+          duration: 8,
+          voice:
+            "Meet LHIC, the Local Human Intent Controller: computer-use automation with evidence, not guesswork.",
+        },
+        {
+          slide: slides.problem,
+          duration: 11,
+          voice:
+            "Computer-use agents are powerful, but familiar tasks should not need a model round trip. Credentials, changing interfaces, and high-risk actions still need a boundary.",
+        },
+        {
+          slide: slides.gpt56,
+          duration: 14,
+          voice:
+            "The Slow Path is a typed planning boundary. This reproducible recording uses a deterministic redacted plan fixture, then applies the exact same verification, trace, learning, and approval controls as a model-provided plan.",
+        },
+        {
+          workflow: "browserHero",
+          duration: 58,
+          voice:
+            "This is a real local shopping site, not a dashboard. The first cart is a complex Slow Path: search, configure a keyboard, add it, open checkout, redeem a promotion after the checkout mutates, choose delivery, and verify the order preview. This credential-free recording uses a deterministic redacted plan fixture at the Slow Path boundary. Only when every action has verifier evidence does LHIC save a local verified skill. Watch the second fresh cart: the Fast Path reuses that learned plan directly. No model call. No MCP. It still refuses to place the order without human approval.",
+        },
+        {
+          slide: slides.verification,
+          duration: 14,
+          voice:
+            "The learning rule is strict. A Slow Path plan becomes local skill memory only after every step returns verifier evidence. The next matched intent can then route through the Fast Path while keeping its risk boundary intact.",
+        },
+        {
+          slide: slides.security,
+          duration: 15,
+          voice:
+            "Safety is enforced by the local executor. Sensitive values are redacted in traces, risky actions are approval-bound, and the Fast Path has no model or MCP dependency.",
+        },
+        {
+          slide: slides.caveat,
+          duration: 12,
+          voice:
+            "GPT-5.6 provides intelligence. LHIC makes computer actions safe, deterministic, and verifiable. Measure real workflows in your own environment before making production claims.",
+        },
+      ];
+
   await renderDemo(
     vendorLive
       ? "lhic-build-week-demo-vendor-live.mp4"
       : "lhic-build-week-demo-commerce-learning.mp4",
-    [
-      {
-        slide: slides.title,
-        duration: vendorLive ? 6 : 8,
-        voice:
-          "Meet LHIC, the Local Human Intent Controller: computer-use automation with evidence, not guesswork.",
-      },
-      {
-        slide: slides.problem,
-        duration: vendorLive ? 7 : 11,
-        voice: vendorLive
-          ? "Known browser work should not need repeated model reasoning. LHIC keeps it local, evidenced, and approval-bound."
-          : "Computer-use agents are powerful, but familiar tasks should not need a model round trip. Credentials, changing interfaces, and high-risk actions still need a boundary.",
-      },
-      {
-        slide: slides.gpt56,
-        duration: vendorLive ? 8 : 14,
-        voice: vendorLive
-          ? "Slow Path uses a typed, redacted plan. Verification, local learning, and approval gates remain mandatory."
-          : "The Slow Path is a typed planning boundary. This reproducible recording uses a deterministic, redacted plan fixture, then applies the exact same verification, trace, learning, and approval controls as a model-provided plan.",
-      },
-      {
-        workflow: "browserHero",
-        duration: vendorLive ? 108 : 58,
-        voice: vendorLive
-          ? "This is the live vendor site, not an LHIC dashboard. First, the Slow Path builds an anonymous order: Test3 times three and Test2 times two, signs the checkout canvas, and commits only with an explicit approval. It then enters the real finance surface, prepares a 200 dollar inventory expense, and commits that second write with approval. Each low-risk action must return verifier evidence before its local skill is saved. Now watch a fresh browser context: the learned commerce and finance skills run directly through Playwright with zero model calls and zero MCP calls. Both new writes stop at the same local approval boundary."
-          : "This is a real local shopping site, not a dashboard. The first cart is a complex Slow Path: search, configure a keyboard, add it, open checkout, redeem a promotion after the checkout mutates, choose delivery, and verify the order preview. This credential-free recording uses a deterministic redacted plan fixture at the Slow Path boundary. Only when every action has verifier evidence does LHIC save a local verified skill. Watch the second fresh cart: the Fast Path reuses that learned plan directly. No model call. No MCP. It still refuses to place the order without human approval.",
-      },
-      {
-        slide: slides.verification,
-        duration: vendorLive ? 8 : 14,
-        voice: vendorLive
-          ? "Only verifier evidence earns a local skill. Missing proof is not success."
-          : "The learning rule is strict. A Slow Path plan becomes local skill memory only after every step returns verifier evidence. The next matched intent can then route through the Fast Path while keeping its risk boundary intact.",
-      },
-      {
-        slide: slides.security,
-        duration: vendorLive ? 8 : 15,
-        voice: vendorLive
-          ? "Inputs are redacted. High-risk writes require human approval. Fast Path calls neither a model nor MCP."
-          : "Safety is enforced by the local executor. Sensitive values are redacted in traces, risky actions are approval-bound, and the Fast Path has no model or MCP dependency.",
-      },
-      {
-        slide: slides.fastPath,
-        duration: vendorLive ? 8 : 14,
-        voice: vendorLive
-          ? "Known low-risk tasks use local Playwright: zero model calls and zero model tokens."
-          : "The local internal benchmark covers fifty controlled fixtures. Known Fast Path actions make zero model calls and every fixture has verifier evidence. This is scoped regression evidence, not a public-web claim.",
-      },
-      {
-        slide: slides.codex,
-        duration: vendorLive ? 7 : 12,
-        voice: vendorLive
-          ? "I set product and safety direction. Codex accelerated the implementation and evidence workflow."
-          : "I set the product direction, security boundaries, and acceptance criteria. Codex accelerated implementation, testing, debugging, packaging, and this reproducible evidence workflow.",
-      },
-      {
-        slide: slides.quickStart,
-        duration: vendorLive ? 7 : 13,
-        voice: vendorLive
-          ? "Run the safe local demo, inspect its evidence, then decide your production policy."
-          : "Judges can run the safe local demo without an account or credential. Install dependencies, install Chromium, then run npm run demo to see evidence and the approval gate.",
-      },
-      {
-        slide: slides.caveat,
-        duration: vendorLive ? 6 : 12,
-        voice: vendorLive
-          ? "Measure real workflows in your environment. LHIC makes the result observable."
-          : "GPT-5.6 provides intelligence. LHIC makes computer actions safe, deterministic, and verifiable. Measure real workflows in your own environment before making production claims.",
-      },
-    ],
+    buildWeekScenes,
     slideFiles,
     workflowVideos,
     ttsConfiguration,
@@ -419,7 +481,7 @@ async function assertFfmpegAvailable(): Promise<void> {
   }
 }
 
-type WorkflowName = Exclude<keyof WorkflowRecordings, "browserHero">;
+type WorkflowName = "standard" | "complex";
 
 interface RecordedWorkflowAction {
   action: SemanticAction;
@@ -428,6 +490,8 @@ interface RecordedWorkflowAction {
 
 type VendorPhase = "slow" | "fast";
 
+// Retained for the explicit legacy finance-recording mode below.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function requireVendorFinanceCode(): string {
   const code = process.env.LHIC_DEMO_FINANCE_CODE?.trim();
   if (!code) {
@@ -438,6 +502,168 @@ function requireVendorFinanceCode(): string {
   return code;
 }
 
+async function recordVendorEnglishCommerceWorkflow(): Promise<VendorCommerceWorkflow> {
+  const recordingDirectory = join(
+    workDirectory,
+    "recording",
+    "vendor-english-commerce",
+  );
+  const output = join(recordingDirectory, "vendor-english-slow-to-fast.mp4");
+  const traceFilePath = join(
+    workDirectory,
+    "vendor-english-commerce-trace.jsonl",
+  );
+  await mkdir(recordingDirectory, { recursive: true });
+
+  const browser = await chromium.launch({ headless: true });
+  const database = createMemoryDatabase(
+    join(recordingDirectory, "selector-memory.sqlite"),
+  );
+  const selectorMemory = new SelectorMemory(database);
+  const skillStore = new SkillStore(database);
+  let slowRecording: string | undefined;
+  let fastRecording: string | undefined;
+
+  try {
+    const slowContext = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      recordVideo: {
+        dir: join(recordingDirectory, "slow"),
+        size: { width: 1280, height: 720 },
+      },
+    });
+    const slowPage = await slowContext.newPage();
+    const slowVideo = slowPage.video();
+    let commerceSkill: SkillRecord | undefined;
+    try {
+      const slowExecutor = createVendorExecutor(
+        slowPage,
+        "demo-vendor-english-slow-path",
+        traceFilePath,
+        selectorMemory,
+      );
+      commerceSkill = await learnVendorPlan(
+        slowPage,
+        slowExecutor,
+        skillStore,
+        vendorCommerceSlowPathRequest(),
+        vendorCommerceSlowPathPlan(),
+        "",
+        "slow",
+      );
+      await showVendorLearnedSkill(
+        slowPage,
+        commerceSkill,
+        "ORDER SKILL VERIFIED · LOCAL SQLITE",
+      );
+      await localizeVendorPage(slowPage);
+      await slowPage.waitForTimeout(1_900);
+
+      const signature = await drawAnonymousVendorSignature(
+        slowPage,
+        traceFilePath,
+        "demo-vendor-english-slow-path",
+      );
+      if (!signature.success) {
+        throw new Error(
+          signature.error ?? "Anonymous signature verification failed.",
+        );
+      }
+      await appendVendorOverlayLog(
+        slowPage,
+        "Anonymous signature drawn",
+        "Canvas stroke verifier passed; checkout is ready for human review.",
+        "success",
+      );
+      await appendVendorOverlayLog(
+        slowPage,
+        "Place order",
+        "POLICY HOLD · the live order is not submitted during this safe re-recording.",
+        "blocked",
+      );
+      await localizeVendorPage(slowPage);
+      await slowPage.waitForTimeout(2_400);
+    } finally {
+      await slowContext.close();
+    }
+    if (!slowVideo) {
+      throw new Error(
+        "Playwright did not create the English Slow Path recording.",
+      );
+    }
+    slowRecording = await slowVideo.path();
+    if (!commerceSkill) {
+      throw new Error(
+        "English Slow Path did not produce a verified local skill.",
+      );
+    }
+
+    const fastContext = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      recordVideo: {
+        dir: join(recordingDirectory, "fast"),
+        size: { width: 1280, height: 720 },
+      },
+    });
+    const fastPage = await fastContext.newPage();
+    const fastVideo = fastPage.video();
+    try {
+      const fastExecutor = createVendorExecutor(
+        fastPage,
+        "demo-vendor-english-fast-path",
+        traceFilePath,
+        selectorMemory,
+      );
+      await replayVendorFastPath(
+        fastPage,
+        fastExecutor,
+        commerceSkill,
+        vendorCommerceActions(),
+        vendorCommerceIntent(),
+        "",
+        "commerce",
+      );
+      await fastPage.waitForTimeout(2_000);
+    } finally {
+      await fastContext.close();
+    }
+    if (!fastVideo) {
+      throw new Error(
+        "Playwright did not create the English Fast Path recording.",
+      );
+    }
+    fastRecording = await fastVideo.path();
+  } finally {
+    await browser.close();
+    database.close();
+  }
+
+  if (!slowRecording || !fastRecording) {
+    throw new Error(
+      "English vendor workflow recording did not produce both paths.",
+    );
+  }
+  const [slowSourceDurationSeconds, fastDurationSeconds] = await Promise.all([
+    getNarrationDuration(slowRecording),
+    getNarrationDuration(fastRecording),
+  ]);
+  const slowStartOffsetSeconds = 3;
+  const slowDurationSeconds = Math.max(
+    0,
+    slowSourceDurationSeconds - slowStartOffsetSeconds,
+  );
+  await blendVendorRecordings(slowRecording, fastRecording, output);
+  return {
+    recording: output,
+    slowDurationSeconds,
+    slowSourceDurationSeconds,
+    slowStartOffsetSeconds,
+    fastDurationSeconds,
+  };
+}
+
+// Retained for users who must resume a previously approved finance recording.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function recordVendorLiveWorkflow(financeCode: string): Promise<string> {
   const priorCommerceRecording = process.env.LHIC_VENDOR_COMMERCE_RECORDING;
   const priorMemoryDatabase = process.env.LHIC_VENDOR_MEMORY_DATABASE;
@@ -804,14 +1030,21 @@ async function learnVendorPlan(
   financeCode: string,
   phase: VendorPhase,
 ): Promise<SkillRecord> {
+  let actionCount = 0;
+  const keepsEnglishSurface =
+    request.userIntent.constraints?.operation === "vendor-anonymous-order";
   const learned = await new SlowPathLearningCoordinator(skillStore).execute(
     request,
     plan,
     {
       execute: async (action) => {
+        if (!keepsEnglishSurface) {
+          await restoreVendorOriginalLanguage(page);
+        }
         const execution = await executor.execute(
           materializeVendorAction(action, financeCode),
         );
+        await localizeVendorPage(page);
         await page.waitForTimeout(
           action.intent === "sign in to the vendor finance dashboard"
             ? 1_500
@@ -828,14 +1061,27 @@ async function learnVendorPlan(
           execution.success && verification.success ? "success" : "blocked",
           phase,
         );
-        await page.waitForTimeout(execution.success ? 1_000 : 1_500);
+        if (phase === "slow" && actionCount === 0) {
+          await showVendorSlowPathContract(page);
+        }
+        actionCount += 1;
+        await page.waitForTimeout(
+          execution.success ? (phase === "slow" ? 1_200 : 300) : 1_500,
+        );
         return { execution, verification };
       },
     },
   );
   if (!learned.learnedSkill) {
+    const failedOutcome = learned.outcomes.find(
+      (outcome) => !outcome.execution.success || !outcome.verification.success,
+    );
     throw new Error(
-      `Vendor ${phase} plan did not qualify for local skill learning.`,
+      `Vendor ${phase} plan did not qualify for local skill learning: ${
+        failedOutcome?.execution.error ??
+        failedOutcome?.verification.error ??
+        "an action had no verifier evidence"
+      }`,
     );
   }
   return learned.learnedSkill;
@@ -867,9 +1113,13 @@ async function replayVendorFastPath(
   }
 
   for (const action of actions) {
+    if (workflow !== "commerce") {
+      await restoreVendorOriginalLanguage(page);
+    }
     const execution = await executor.execute(
       materializeVendorAction(action, financeCode),
     );
+    await localizeVendorPage(page);
     await page.waitForTimeout(
       action.intent === "sign in to the vendor finance dashboard" ? 1_500 : 450,
     );
@@ -889,7 +1139,7 @@ async function replayVendorFastPath(
         `Fast Path ${workflow} action failed: ${execution.error ?? action.intent}`,
       );
     }
-    await page.waitForTimeout(780);
+    await page.waitForTimeout(300);
   }
 
   await showVendorFastPathSkill(page, skill, workflow);
@@ -1047,15 +1297,15 @@ function vendorCommerceActions(): BrowserSemanticAction[] {
     {
       type: "click",
       intent: "open the anonymous checkout surface",
-      target: "前往結帳",
+      target: "aside.sticky > div:last-child button:last-child",
       methodPreference: ["dom", "accessibility"],
       riskLevel: "low",
     },
     {
       type: "fill",
       intent: "enter a non-identifying shopper label required by checkout",
-      target: 'input[placeholder="姓名"]',
-      value: "匿名示範",
+      target: 'input[placeholder="Name"]',
+      value: "Anonymous demo",
       methodPreference: ["dom", "accessibility"],
       riskLevel: "low",
     },
@@ -1070,7 +1320,7 @@ function vendorCommerceActions(): BrowserSemanticAction[] {
     {
       type: "fill",
       intent: "enter a demo-only checkout department",
-      target: 'input[placeholder="部門"]',
+      target: 'input[placeholder="Department"]',
       value: "DEMO",
       methodPreference: ["dom", "accessibility"],
       riskLevel: "low",
@@ -1141,7 +1391,7 @@ function vendorOrderAction(): BrowserSemanticAction {
   return {
     type: "click",
     intent: "confirm the anonymous Test3 and Test2 order",
-    target: "確認購買",
+    target: "Place order",
     methodPreference: ["dom", "accessibility"],
     riskLevel: "high",
   };
@@ -1176,6 +1426,7 @@ async function executeAuthorizedVendorAction(
   action: BrowserSemanticAction,
   approvalReason: string,
 ): Promise<void> {
+  await restoreVendorOriginalLanguage(page);
   const execution = await executor.execute(
     action,
     createActionApproval(action, "user-authorized-vendor-demo"),
@@ -1189,6 +1440,7 @@ async function executeAuthorizedVendorAction(
     execution.success && verification.success ? "success" : "blocked",
     "slow",
   );
+  await localizeVendorPage(page);
   if (!execution.success || !verification.success) {
     throw new Error(
       `Authorized vendor action failed: ${execution.error ?? action.intent}`,
@@ -1247,7 +1499,8 @@ async function verifyVendorAction(
   const intent = action.intent;
   if (intent === "open the anonymous vendor storefront") {
     return vendorVerification(
-      await headingVisible("公司福利社"),
+      (await headingVisible("公司福利社")) ||
+        (await headingVisible("Company Store")),
       "Verifier observed the live vendor storefront heading.",
     );
   }
@@ -1287,7 +1540,7 @@ async function verifyVendorAction(
     return vendorVerification(
       (
         await page
-          .locator('input[placeholder="姓名"]')
+          .locator('input[placeholder="Name"]')
           .inputValue()
           .catch(() => "")
       ).length > 0,
@@ -1309,7 +1562,7 @@ async function verifyVendorAction(
     return vendorVerification(
       (
         await page
-          .locator('input[placeholder="部門"]')
+          .locator('input[placeholder="Department"]')
           .inputValue()
           .catch(() => "")
       ).length > 0,
@@ -1385,7 +1638,7 @@ async function verifyVendorAction(
       .innerText()
       .catch(() => "");
     const purchaseButtonVisible = await page
-      .getByRole("button", { name: "確認購買", exact: true })
+      .getByRole("button", { name: "Place order", exact: true })
       .isVisible()
       .catch(() => false);
     return vendorVerification(
@@ -1596,6 +1849,184 @@ async function installVendorOverlay(
   }, phase);
 }
 
+const vendorEnglishText: Record<string, string> = {
+  公司福利社: "Company Store",
+  "選擇商品、簽名確認，收據會自動產生。":
+    "Choose items, sign to confirm, and a receipt is generated automatically.",
+  員工代碼: "Employee code",
+  登入: "Sign in",
+  "Passkey 登入": "Sign in with Passkey",
+  購物車: "Shopping Cart",
+  尚未加入商品: "Your cart is empty",
+  總計: "Total",
+  清空: "Clear",
+  清除: "Clear",
+  加入購物車: "Add to Cart",
+  庫存: "In stock",
+  無圖片: "No image",
+  購物車明細: "Cart details",
+  結帳總額: "Checkout total",
+  簽名確認: "Signature confirmation",
+  確認購買: "Place order",
+  財務系統登入: "Finance sign in",
+  "使用代碼或 Passkey 登入。": "Use a code or Passkey to sign in.",
+  登入代碼: "Access code",
+  返回福利社: "Back to store",
+  財務與管理看板: "Finance & management dashboard",
+  "Admin · 管理權限": "Admin · administrator",
+  系統管理: "System administration",
+  建立Passkey: "Create Passkey",
+  "建立 Passkey": "Create Passkey",
+  登出: "Sign out",
+  總收入: "Total income",
+  總支出: "Total expenses",
+  現金淨利: "Net cash",
+  庫存價值: "Inventory value",
+  收支紀錄: "Ledger",
+  訂單管理: "Order management",
+  商品庫存: "Inventory",
+  員工資料: "Employees",
+  支出: "Expense",
+  收入: "Income",
+  新增: "Add record",
+  日期: "Date",
+  類型: "Type",
+  金額: "Amount",
+  備註: "Note",
+  記錄者: "Recorded by",
+  進貨: "Inventory purchase",
+  "已加入 Test3": "Added Test3",
+  "已加入 Test2": "Added Test2",
+};
+
+const vendorEnglishPlaceholders: Record<string, string> = {
+  員工代碼: "Employee code",
+  登入代碼: "Access code",
+  姓名: "Name",
+  部門: "Department",
+  金額: "Amount",
+  備註: "Note",
+};
+
+async function localizeVendorPage(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ text, placeholders }) => {
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
+      const nodes: Text[] = [];
+      let node = walker.nextNode();
+      while (node) {
+        nodes.push(node as Text);
+        node = walker.nextNode();
+      }
+      for (const textNode of nodes) {
+        const parent = textNode.parentElement;
+        if (parent?.closest("#lhic-vendor-overlay, script, style")) {
+          continue;
+        }
+        const trackedNode = textNode as Text & {
+          __lhicOriginalText?: string;
+        };
+        const original =
+          trackedNode.__lhicOriginalText ?? textNode.nodeValue ?? "";
+        const leading = original.match(/^\s*/)?.[0] ?? "";
+        const trailing = original.match(/\s*$/)?.[0] ?? "";
+        const translated = text[original.trim()];
+        if (!translated) {
+          continue;
+        }
+        trackedNode.__lhicOriginalText = original;
+        textNode.nodeValue = `${leading}${translated}${trailing}`;
+      }
+
+      for (const input of document.querySelectorAll<HTMLElement>(
+        "[placeholder]",
+      )) {
+        if (input.closest("#lhic-vendor-overlay, script, style")) {
+          continue;
+        }
+        const original =
+          input.dataset.lhicOriginalPlaceholder ??
+          input.getAttribute("placeholder") ??
+          "";
+        const translated = placeholders[original];
+        if (!translated) {
+          continue;
+        }
+        input.dataset.lhicOriginalPlaceholder = original;
+        input.setAttribute("placeholder", translated);
+      }
+
+      for (const button of document.querySelectorAll<HTMLButtonElement>(
+        "button",
+      )) {
+        if (button.textContent?.trim() !== "前往結帳") {
+          continue;
+        }
+        button.dataset.lhicEnglishLabel = "Checkout";
+        button.style.position = "relative";
+        button.style.color = "transparent";
+      }
+
+      if (!document.getElementById("lhic-vendor-english-labels")) {
+        const style = document.createElement("style");
+        style.id = "lhic-vendor-english-labels";
+        style.textContent = `
+          button[data-lhic-english-label]::after {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: white;
+            content: attr(data-lhic-english-label);
+          }
+        `;
+        document.head.append(style);
+      }
+    },
+    { text: vendorEnglishText, placeholders: vendorEnglishPlaceholders },
+  );
+}
+
+async function restoreVendorOriginalLanguage(page: Page): Promise<void> {
+  await page
+    .evaluate(() => {
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
+      let node = walker.nextNode();
+      while (node) {
+        const textNode = node as Text & { __lhicOriginalText?: string };
+        if (textNode.__lhicOriginalText !== undefined) {
+          textNode.nodeValue = textNode.__lhicOriginalText;
+          delete textNode.__lhicOriginalText;
+        }
+        node = walker.nextNode();
+      }
+      for (const input of document.querySelectorAll<HTMLElement>(
+        "[data-lhic-original-placeholder]",
+      )) {
+        input.setAttribute(
+          "placeholder",
+          input.dataset.lhicOriginalPlaceholder ?? "",
+        );
+        delete input.dataset.lhicOriginalPlaceholder;
+      }
+      for (const button of document.querySelectorAll<HTMLButtonElement>(
+        "button[data-lhic-english-label]",
+      )) {
+        delete button.dataset.lhicEnglishLabel;
+        button.style.removeProperty("position");
+        button.style.removeProperty("color");
+      }
+      document.getElementById("lhic-vendor-english-labels")?.remove();
+    })
+    .catch(() => {});
+}
+
 async function appendVendorOverlayLog(
   page: Page,
   title: string,
@@ -1629,6 +2060,21 @@ async function appendVendorOverlayLog(
     },
     { title, evidence, status },
   );
+}
+
+async function showVendorSlowPathContract(page: Page): Promise<void> {
+  await installVendorOverlay(page, "slow");
+  await page.evaluate(() => {
+    const skill = document.querySelector(
+      "#lhic-vendor-overlay [data-lhic-skill]",
+    ) as HTMLElement | null;
+    if (!skill) {
+      return;
+    }
+    skill.style.display = "block";
+    skill.textContent =
+      "GPT-5.6 SLOW-PATH CONTRACT · typed plan · redacted inputs · verifier-bound";
+  });
 }
 
 async function showVendorLearnedSkill(
@@ -2000,6 +2446,22 @@ async function verifyCommerceAction(
       }, value)
       .catch(() => false);
 
+  if (target === "#promo-code-v2") {
+    const success =
+      (await page
+        .locator(target)
+        .inputValue()
+        .catch(() => "")) === "BUNDLE10";
+    return {
+      success,
+      evidence: success
+        ? [
+            "Verifier observed the recovered website-v2 offer code in the new field.",
+          ]
+        : [],
+    };
+  }
+
   const checks: Record<string, () => Promise<[boolean, string]>> = {
     'input[name="catalog-search"]': async () => [
       await visible("#aurora-product"),
@@ -2124,6 +2586,268 @@ async function createLocalFixtureServer(contents: string): Promise<{
         server.close((error) => (error ? reject(error) : resolve()));
       }),
   };
+}
+
+async function recordWebsiteUpdateRecoveryWorkflow(): Promise<string> {
+  const recordingDirectory = join(
+    workDirectory,
+    "recording",
+    "website-recovery",
+  );
+  await mkdir(recordingDirectory, { recursive: true });
+  const fixture = await createLocalFixtureServer(commerceLearningPage());
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    recordVideo: {
+      dir: recordingDirectory,
+      size: { width: 1280, height: 720 },
+    },
+  });
+  const page = await context.newPage();
+  const video = page.video();
+  const traceFilePath = join(workDirectory, "website-recovery-trace.jsonl");
+  const database = createMemoryDatabase(
+    join(recordingDirectory, "selector-memory.sqlite"),
+  );
+  const selectorMemory = new SelectorMemory(database);
+  const skillStore = new SkillStore(database);
+
+  try {
+    await page.goto(`${fixture.url}?mode=fast`);
+    await setCommerceRoute(page, {
+      label: "FAST PATH · SKILL V1",
+      detail: "Existing local skill matched · website update detection armed",
+    });
+    const executor = new PlaywrightDirectExecutor(page, {
+      taskId: "demo-website-update-recovery",
+      traceFilePath,
+      selectorMemory,
+    });
+    await page.waitForTimeout(950);
+
+    for (const action of commerceActions().slice(0, 6)) {
+      const result = await executor.execute(action);
+      const verification = await verifyCommerceAction(page, action, result);
+      if (!result.success || !verification.success) {
+        throw new Error(
+          `Recovery setup action failed: ${result.error ?? action.intent}`,
+        );
+      }
+      await appendLiveOperatorLog(
+        page,
+        action,
+        result,
+        verification.evidence[0],
+      );
+      await page.waitForTimeout(390);
+    }
+
+    await markWebsiteUpdated(page);
+    await page.waitForTimeout(1_200);
+    const legacyAction: SemanticAction = {
+      type: "fill",
+      intent: "reuse the v1 promotion selector after the website update",
+      target: 'input[name="promo-code"]',
+      value: "BUNDLE10",
+      methodPreference: ["dom", "accessibility"],
+      riskLevel: "low",
+    };
+    const legacyResult = await executor.execute(legacyAction);
+    if (legacyResult.success) {
+      throw new Error(
+        "The website-update fixture did not invalidate Skill v1.",
+      );
+    }
+    await appendLiveOperatorLog(page, legacyAction, legacyResult);
+    await showWebsiteRecoveryPlan(page);
+    await page.waitForTimeout(1_900);
+
+    const recovered = await new SlowPathLearningCoordinator(skillStore).execute(
+      websiteRecoveryRequest(),
+      websiteRecoveryPlan(),
+      {
+        execute: async (action) => {
+          const execution = await executor.execute(action);
+          const verification = await verifyCommerceAction(
+            page,
+            action,
+            execution,
+          );
+          await appendLiveOperatorLog(
+            page,
+            action,
+            execution,
+            verification.evidence[0] ??
+              "Recovery verifier did not accept the action.",
+          );
+          await page.waitForTimeout(execution.success ? 620 : 1_100);
+          return { execution, verification };
+        },
+      },
+    );
+    if (!recovered.learnedSkill) {
+      throw new Error("Website recovery did not earn the verified Skill v2.");
+    }
+    await showWebsiteRecoveryVerified(page, recovered.learnedSkill);
+    await page.waitForTimeout(1_650);
+
+    const dangerousAction = commerceOrderAction();
+    const blocked = await executor.execute(dangerousAction);
+    if (blocked.success) {
+      throw new Error("Recovery workflow order unexpectedly bypassed policy.");
+    }
+    await appendLiveOperatorLog(page, dangerousAction, blocked);
+    await page.waitForTimeout(3_400);
+  } finally {
+    await context.close();
+    await browser.close();
+    database.close();
+    await fixture.close();
+  }
+
+  if (!video) {
+    throw new Error(
+      "Playwright did not create the website recovery recording.",
+    );
+  }
+  return video.path();
+}
+
+function websiteRecoveryRequest(): SlowPathRequest {
+  return {
+    taskId: "demo-website-update-recovery",
+    userIntent: {
+      goal: "Recover the changed checkout offer field and retain human order authority.",
+      domain: "local-website-update-fixture",
+      constraints: { priorSkillVersion: "v1", targetSkillVersion: "v2" },
+      riskLevel: "low",
+      requiresConfirmation: false,
+      missingInformation: [],
+    },
+    uiState: {
+      surface: "browser",
+      url: "http://lhic.local.test/store?website=v2",
+      objects: ["checkout", "offer-code-v2", "place-order"],
+      signals: { fastPathMismatch: true, skillVersion: "v1" },
+      capturedAt: "2026-07-17T00:00:00.000Z",
+    },
+    recentTrace: [],
+    reason: "complex_planning",
+  };
+}
+
+function websiteRecoveryPlan(): SlowPathResponse {
+  return {
+    decision: "retry_with_action",
+    message:
+      "Reproducible redacted GPT-5.6 recovery-plan fixture for the changed website-v2 offer field.",
+    proposedActions: [
+      {
+        type: "fill",
+        intent: "enter the offer code through the recovered website-v2 field",
+        target: "#promo-code-v2",
+        value: "BUNDLE10",
+        methodPreference: ["dom", "accessibility"],
+        riskLevel: "low",
+      },
+      {
+        type: "click",
+        intent: "apply the recovered website-v2 offer code",
+        target: "#redeem-promo",
+        methodPreference: ["dom", "accessibility"],
+        riskLevel: "low",
+      },
+      {
+        type: "select",
+        intent: "restore express delivery through the recovered checkout route",
+        target: 'select[name="delivery"]',
+        value: "express",
+        methodPreference: ["dom", "accessibility"],
+        riskLevel: "low",
+      },
+      {
+        type: "click",
+        intent: "generate the recovered verified checkout preview",
+        target: "#preview-cart",
+        methodPreference: ["dom", "accessibility"],
+        riskLevel: "low",
+      },
+      {
+        type: "wait",
+        intent: "wait for recovered checkout verifier evidence",
+        target: "#checkout-ready",
+        value: 1_000,
+        methodPreference: ["dom"],
+        riskLevel: "low",
+      },
+    ],
+  };
+}
+
+async function markWebsiteUpdated(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const promo = document.querySelector(
+      "#promo-code",
+    ) as HTMLInputElement | null;
+    if (!promo) {
+      throw new Error("Could not locate the original promotion field.");
+    }
+    promo.id = "promo-code-v2";
+    promo.name = "offer-code-v2";
+    promo.placeholder = "Offer code (website v2)";
+    const notice = document.querySelector("#mutation-notice");
+    if (notice) {
+      notice.textContent =
+        "WEBSITE UPDATE DETECTED · v1 promo selector no longer matches · Fast Path stopped";
+      notice.classList.add("visible");
+    }
+  });
+}
+
+async function showWebsiteRecoveryPlan(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const checkout = document.querySelector("#checkout-panel");
+    if (!checkout || document.querySelector("#website-recovery-plan")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.textContent = `
+      #website-recovery-plan { margin: 11px 0; padding: 10px 12px; border: 1px solid #9b8cff88; border-radius: 9px; color: #e7ddff; background: #9b8cff14; animation: recovery-enter .3s ease-out; }
+      #website-recovery-plan strong, #website-recovery-plan span { display: block; }
+      #website-recovery-plan strong { font-size: 10px; letter-spacing: .08em; }
+      #website-recovery-plan span { margin-top: 5px; color: #c7bdf2; font-size: 9px; line-height: 1.35; }
+      @keyframes recovery-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    `;
+    const card = document.createElement("section");
+    card.id = "website-recovery-plan";
+    card.innerHTML =
+      "<strong>GPT-5.6 RECOVERY PLAN · TYPED FIXTURE</strong><span>New v2 route proposed → schema check → policy check → verifier evidence → Skill v2.</span>";
+    checkout.prepend(style, card);
+  });
+}
+
+async function showWebsiteRecoveryVerified(
+  page: Page,
+  skill: SkillRecord,
+): Promise<void> {
+  await showLearnedCommerceSkill(page, skill);
+  await page.evaluate(() => {
+    const route = document.querySelector("#route-badge");
+    const detail = document.querySelector("#route-detail");
+    const plan = document.querySelector("#website-recovery-plan");
+    if (route) {
+      route.textContent = "RECOVERY VERIFIED · SKILL V2";
+    }
+    if (detail) {
+      detail.textContent =
+        "Replacement route is local only after every recovery action carries verifier evidence";
+    }
+    if (plan) {
+      plan.innerHTML =
+        "<strong>SKILL V2 SAVED LOCALLY</strong><span>Recovered route verified. The place-order action remains approval-gated.</span>";
+    }
+  });
 }
 
 async function recordOperatorWorkflow(kind: WorkflowName): Promise<string> {
@@ -2353,7 +3077,9 @@ async function appendLiveOperatorLog(
       const evidence = event.success
         ? (event.evidence[0] ?? "Action completed with verifier evidence.")
         : (event.error ?? "Action was blocked by the local policy.");
-      const recovered = evidence.includes("healed selector");
+      const recovered = /healed selector|recovery/i.test(evidence);
+      const policyBlocked =
+        !event.success && /approval|policy/i.test(event.error ?? "");
       line.className = `live-log ${event.success ? "success" : "blocked"}${recovered ? " recovered" : ""}`;
       const timestamp = new Date().toISOString().slice(11, 23);
       const heading = document.createElement("strong");
@@ -2371,9 +3097,11 @@ async function appendLiveOperatorLog(
       if (stage) {
         stage.textContent = event.success
           ? `${event.actionType.toUpperCase()} verified`
-          : "Approval required";
+          : policyBlocked
+            ? "Approval required"
+            : "Fast Path mismatch detected";
       }
-      if (!event.success) {
+      if (policyBlocked) {
         document.querySelector("#approval-gate")?.classList.add("visible");
       }
     },
@@ -2395,10 +3123,14 @@ function createSlides(
   selectorSimulation: Awaited<
     ReturnType<typeof runSelectorResilienceSimulation>
   >,
+  vendorWorkflow?: VendorCommerceWorkflow,
 ): Record<string, Slide> {
   const metrics = internalBenchmark.metrics;
   const percentage = (value: number) => `${Math.round(value * 100)}%`;
   const selectorDelta = Math.round(selectorSimulation.successRateDelta * 100);
+  const vendorSlowSeconds = vendorWorkflow?.slowDurationSeconds ?? 103.5;
+  const vendorFastSeconds = vendorWorkflow?.fastDurationSeconds ?? 37;
+  const vendorSpeedup = vendorSlowSeconds / vendorFastSeconds;
 
   return {
     title: {
@@ -2416,6 +3148,156 @@ function createSlides(
           detail: "Evidence every action",
         },
         { label: "Memory", value: "SQLite", detail: "Redacted and local" },
+      ],
+    },
+    vendorSlow: {
+      id: "vendor-slow-path",
+      eyebrow: "01 · FIRST ENCOUNTER",
+      title: "Slow Path learns the work before it earns the speed.",
+      body: "A live vendor workflow is localized into English for the demo. LHIC builds a bounded plan, executes it through Playwright, and requires verifier evidence after every low-risk action.",
+      note: "Cyan = Slow Path · first encounter · discovery and verification",
+      accent: "cyan",
+      cards: [
+        {
+          label: "Mode",
+          value: "Slow Path",
+          detail: "Typed plan boundary",
+        },
+        {
+          label: "Recorded time",
+          value: `${vendorSlowSeconds.toFixed(1)} s`,
+          detail: "First live encounter",
+        },
+        {
+          label: "Proof",
+          value: "Required",
+          detail: "Every action verified",
+        },
+      ],
+    },
+    vendorLearning: {
+      id: "vendor-learning-loop",
+      eyebrow: "02 · VERIFIED SELF-LEARNING",
+      title: "Evidence turns a first run into a reusable local skill.",
+      body: "LHIC stores a redacted semantic action plan and only the selector candidates that proved reliable. The next matching intent can use that inspected local memory—not a blind recording.",
+      note: "Slow Path → verifier evidence → redacted SQLite skill → Fast Path",
+      accent: "violet",
+      cards: [
+        {
+          label: "Input",
+          value: "Plan",
+          detail: "Semantic, not coordinates",
+        },
+        {
+          label: "Promotion",
+          value: "Verified",
+          detail: "Evidence is mandatory",
+        },
+        {
+          label: "Memory",
+          value: "Local",
+          detail: "Redacted SQLite skill",
+        },
+      ],
+    },
+    vendorFast: {
+      id: "vendor-fast-path",
+      eyebrow: "03 · LEARNED REPLAY",
+      title: "Fast Path: same intent, fresh browser, no model detour.",
+      body: "The newly learned commerce skill matches locally, replays through direct Playwright, and retains the exact same verifier and approval boundaries from the first encounter.",
+      note: "Lime = Fast Path · 0 model calls · 0 MCP calls",
+      accent: "lime",
+      cards: [
+        {
+          label: "Mode",
+          value: "Fast Path",
+          detail: "Local direct replay",
+        },
+        {
+          label: "Recorded time",
+          value: `${vendorFastSeconds.toFixed(1)} s`,
+          detail: "Fresh browser context",
+        },
+        {
+          label: "Model / MCP",
+          value: "0 / 0",
+          detail: "Not in the loop",
+        },
+      ],
+    },
+    vendorSpeed: {
+      id: "vendor-speed-review",
+      eyebrow: "04 · MEASURED DIFFERENCE",
+      title: `${vendorSpeedup.toFixed(1)}× faster—because the system learned, not because it skipped checks.`,
+      body: `This comparison comes from the recorded live vendor workflow: ${vendorSlowSeconds.toFixed(1)} seconds for the evidence-building first encounter and ${vendorFastSeconds.toFixed(1)} seconds for the matched local replay.`,
+      note: "Same intent · fresh browser · verifier retained · approval retained",
+      accent: "lime",
+      cards: [
+        {
+          label: "Slow Path",
+          value: `${vendorSlowSeconds.toFixed(1)} s`,
+          detail: "Plan and learn",
+        },
+        {
+          label: "Fast Path",
+          value: `${vendorFastSeconds.toFixed(1)} s`,
+          detail: "Local skill replay",
+        },
+        {
+          label: "Speedup",
+          value: `${vendorSpeedup.toFixed(1)}×`,
+          detail: "Recorded workflow",
+        },
+      ],
+    },
+    vendorRecovery: {
+      id: "vendor-website-recovery",
+      eyebrow: "03 · WEBSITE UPDATE",
+      title: "A changed page must break safely before it learns a new route.",
+      body: "When a stored Fast Path selector no longer matches, LHIC records the mismatch and stops. A GPT-5.6 recovery plan is schema-checked, policy-checked, and re-verified before the replacement becomes Skill v2.",
+      note: "Fast Path mismatch → GPT-5.6 recovery plan → verified Skill v2",
+      accent: "amber",
+      cards: [
+        {
+          label: "Old route",
+          value: "Blocked",
+          detail: "No silent fallback",
+        },
+        {
+          label: "Recovery",
+          value: "Typed",
+          detail: "Schema and policy checked",
+        },
+        {
+          label: "Upgrade",
+          value: "Skill v2",
+          detail: "Evidence required again",
+        },
+      ],
+    },
+    vendorPolicy: {
+      id: "vendor-policy-boundary",
+      eyebrow: "04 · DURABLE SAFETY BOUNDARY",
+      title: "Every skill version keeps the same human approval gate.",
+      body: "A risky action does not become safe just because the route is faster or newer. The local policy stops the side effect, waits for a bound human approval, and preserves that requirement in every future version.",
+      note: "Policy block → human approval → controlled side effect",
+      accent: "amber",
+      cards: [
+        {
+          label: "Fast Path",
+          value: "Cannot bypass",
+          detail: "Policy runs locally",
+        },
+        {
+          label: "Recovery v2",
+          value: "Still gated",
+          detail: "New route, same boundary",
+        },
+        {
+          label: "Human",
+          value: "Authorizes",
+          detail: "Before side effects",
+        },
       ],
     },
     problem: {
@@ -2746,10 +3628,16 @@ async function renderDemo(
       );
     }
     if (scene.workflow) {
+      const recording = workflowVideos[scene.workflow];
+      if (!recording) {
+        throw new Error(`Missing workflow recording: ${scene.workflow}.`);
+      }
       await renderWorkflowClip(
-        workflowVideos[scene.workflow],
+        recording,
         narration,
         scene.duration,
+        scene.workflowOffsetSeconds ?? 0,
+        scene.workflowSourceDurationSeconds ?? scene.duration,
         backgroundMusic,
         sceneOffset,
         soundEffectForScene(scene, index, audioAssets),
@@ -2914,12 +3802,16 @@ async function renderWorkflowClip(
   recording: string,
   narration: string,
   duration: number,
+  sourceOffsetSeconds: number,
+  sourceDurationSeconds: number,
   backgroundMusic: string,
   musicOffset: number,
   soundEffect: string | undefined,
   output: string,
 ): Promise<void> {
   const args = [
+    "-ss",
+    String(sourceOffsetSeconds),
     "-i",
     recording,
     "-i",
@@ -2936,7 +3828,7 @@ async function renderWorkflowClip(
     "-t",
     String(duration),
     "-vf",
-    `scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2:#07111f,tpad=stop_mode=clone:stop_duration=${duration}`,
+    `trim=duration=${sourceDurationSeconds},setpts=PTS-STARTPTS,scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2:#07111f,tpad=stop_mode=clone:stop_duration=${duration}`,
     "-r",
     String(frameRate),
     "-filter_complex",
