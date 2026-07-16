@@ -60,4 +60,4 @@ npm run bench:simulate
 
 ## 📄 License
 
-Business Source License 1.1 (BSL) - see introduction website for more details.
+Dual-licensed under the MIT License and the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

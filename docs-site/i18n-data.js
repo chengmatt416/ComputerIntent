@@ -121,7 +121,7 @@ const i18nPage = {
             { title: "市場領先與策略定位", desc: "LHIC 並非泛用的網頁「大模型探索代理」，而是鎖定在<strong>企業級高頻率、需要高可靠度與隱私保護的已知操作任務</strong>。當前許多產品追求「完全自主探索」，往往導致昂貴的賬單與隨機性的任務失敗。LHIC 的雙軌路由策略 (Fast/Slow Path) 將企業自動化的邊際成本降至接近零。" },
             { title: "防偽門檻與基準提交規則", desc: "我們絕不宣稱無客觀證據的 SOTA 指標。為保障指標真實性，專案配置了 <code>lhic bench validate-evidence</code> 驗證指令。唯有在 BrowserGym/AgentLab 整合套件下跑完 WorkArena 完整資料集、提交不加 any 修改的映像檔 Hash，並取得獨立第三方的再現，才被允許發布市場基準領先宣稱。" }
         ],
-        footerDesc: "© 2026 LHIC Project. All rights reserved. 本專案採用 Business Source License 1.1 (BSL) 授權，保障企業核心安全防護與隱私。",
+        footerDesc: "© 2026 LHIC Project. All rights reserved. 本專案採用 MIT 與 Apache 2.0 雙重授權。",
         footerLinks: ["功能總覽", "模組架構", "使用教學", "GitHub"]
     },
     en: {
@@ -246,7 +246,7 @@ const i18nPage = {
             { title: "Market Alignment & Positioning", desc: "LHIC targets high-frequency, reliable enterprise automation. We shift away from unpredictable fully-autonomous discovery, dropping marginal run costs to zero." },
             { title: "Anti-Falsification & Submission Policy", desc: "We enforce rigorous validations. Submissions require unmodified hashes, full dataset audits, and independent verification prior to asserting SOTA status." }
         ],
-        footerDesc: "© 2026 LHIC Project. All rights reserved. BSL 1.1 Licensed for enterprise privacy protection.",
+        footerDesc: "© 2026 LHIC Project. All rights reserved. Dual-licensed under the MIT and Apache 2.0 licenses.",
         footerLinks: ["Features", "Architecture", "Tutorial", "GitHub"]
     }
 };
