@@ -1,4 +1,4 @@
-import type { SemanticAction } from "@lhic/schema";
+import type { BrowserSemanticAction } from "@lhic/schema";
 
 export interface BrowserGymAction {
   name: string;
@@ -6,7 +6,9 @@ export interface BrowserGymAction {
   args: Record<string, any>;
 }
 
-export function adaptBrowserGymAction(bgAction: BrowserGymAction): SemanticAction {
+export function adaptBrowserGymAction(
+  bgAction: BrowserGymAction,
+): BrowserSemanticAction {
   switch (bgAction.name) {
     case "click":
       return {

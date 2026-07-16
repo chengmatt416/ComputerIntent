@@ -53,16 +53,16 @@ const i18nPage = {
         tutoTag: "Detailed Guide",
         tutoTitle: "詳細使用教學",
         tutoSubtitle: "從環境建置到生產部署，逐步引導您掌握 LHIC 的強大安全自動化能力。",
-        tutoTabs: ["安裝與初始化", "CLI 開發使用", "MCP 代理整合", "生產安全配置"],
+        tutoTabs: ["安裝與初始化", "CLI 開發使用", "AI Harness 整合", "生產安全配置"],
         tutoStepsInstall: [
-            { title: "安裝專案依賴與建置", desc: "專案核心依賴 Node.js 24 (由於使用原生 <code>node:sqlite</code> 作為技能記憶資料庫)。" },
+            { title: "使用 npx 啟動 LHIC", desc: "需要 Node.js 24 以上版本；不必全域安裝 LHIC。" },
             { title: "安裝 Playwright 瀏覽器核心", desc: "安裝運行時所需的 Playwright Chromium 瀏覽器驅動。" },
-            { title: "執行基礎測試", desc: "確保本地核心測試及格式化全部通過。" }
+            { title: "驗證本機執行環境", desc: "確認瀏覽器自動化與桌面控制的必要條件皆已就緒。" }
         ],
         tutoCodesInstall: [
-            "# 複製專案後安裝依賴並進行 TypeScript 編譯\ngit clone https://github.com/chengmatt416/ComputerIntent.git\ncd ComputerIntent\nnpm install\nnpm run build",
-            "npm run pw:install",
-            "# 執行格式化、語法檢查與單元測試\nnpm run format\nnpm run lint\nnpm test"
+            "# 不需全域安裝\nnpx @pinyencheng/lhic start",
+            "npx playwright@1.61.1 install chromium",
+            "npx @pinyencheng/lhic preflight\nnpx @pinyencheng/lhic global doctor"
         ],
         tutoStepsCli: [
             { title: "執行語意自動化動作", desc: "透過編譯好的 CLI，傳入語意動作 JSON 檔案執行。" },
@@ -70,19 +70,25 @@ const i18nPage = {
             { title: "抗變性消融模擬器", desc: "執行本地語意抗變性 (resilience) 的消融模擬評估。" }
         ],
         tutoCodesCli: [
-            "# 執行特定 semantic action 任務\nnpx lhic run action action.json",
-            "# 檢查指定追蹤日誌的健全度與規格狀況\nnpx lhic trace inspect trace.jsonl",
-            "# 執行 100 次以指定 Seed (20260715) 生成的抗變性消融測試\nnpx lhic bench simulate resilience 100 20260715"
+            "# 執行特定 semantic action 任務\nnpx @pinyencheng/lhic run action action.json",
+            "# 檢查指定追蹤日誌的健全度與規格狀況\nnpx @pinyencheng/lhic trace inspect path/to/trace.jsonl",
+            "# 執行 100 次以指定 Seed (20260715) 生成的抗變性消融測試\nnpx @pinyencheng/lhic bench simulate resilience 100 20260715"
         ],
         tutoStepsMcp: [
-            { title: "註冊與驗證外掛程式", desc: "利用 Antigravity (<code>agy</code>) 的外掛機制註冊本地 MCP 伺服器組件。" },
-            { title: "啟動本地 MCP 服務", desc: "以 stdio 協議啟動 MCP 服務供外部 AI 代理連線。" },
-            { title: "與 AI 代理協作", desc: "在 Cursor / Windsurf / Claude Desktop 中載入 LHIC 做為網頁自動化工具。" }
+            { title: "建置並預檢本機執行環境", desc: "AI harness 與 Chromium 必須在同一台電腦執行。MCP server 尚需由此 checkout 建置一次；後續的 CLI 使用與驗證則透過 npx 執行。" },
+            { title: "使用已編譯的 stdio MCP 進入點", desc: "每個 MCP server process 管理一個新的 Chromium 工作階段，並依到達順序序列化操作。請讓 harness 直接啟動 <code>node</code>；不要使用 <code>npm run</code>，避免 Lifecycle 輸出污染 MCP 的 JSON stdio 通訊協定。" },
+            { title: "在 OpenClaw 註冊並即時驗證", desc: "在專案根目錄執行以下命令，將 LHIC 儲存為 OpenClaw 管理的本機 MCP server，然後以 live probe 確認它能啟動並列出工具。" },
+            { title: "在 Hermes 設定 MCP server", desc: "在 <code>~/.hermes/config.yaml</code> 的 <code>mcp_servers</code> 中新增 LHIC。保留單一序列化工作階段設定，並使用本機 SQLite 路徑保存經遮蔽的技能與選擇器記憶。" },
+            { title: "以 Antigravity 外掛方式使用（選用）", desc: "此專案已包含 Antigravity 外掛。驗證外掛後，產生可供審閱的設定片段，貼入 harness 設定並在重啟後用 <code>/mcp</code> 確認連線。" },
+            { title: "執行第一個可驗證任務", desc: "請 harness 依序使用以下工具。每個動作後都要檢查 <code>result.success</code>、驗證證據與回傳狀態；高風險或未知風險動作仍需要人類核准。" }
         ],
         tutoCodesMcp: [
-            "# 驗證外掛設定是否符合 Antigravity 規格\nagy plugin validate .agents/plugins/lhic-computer-use",
-            "# 啟動本地 MCP 服務\nnpx lhic-mcp",
-            "// 外部 AI 代理 (例如 Antigravity) 的設定檔配置\n{\n  \"mcpServers\": {\n    \"lhic-computer-use\": {\n      \"command\": \"npx\",\n      \"args\": [\n        \"lhic-mcp\"\n      ],\n      \"cwd\": \"/absolute/path/to/ComputerIntent\"\n    }\n  }\n}"
+            "npm ci\nnpm run build\nnpx playwright@1.61.1 install chromium\nnpx @pinyencheng/lhic preflight",
+            "# Every harness points at this local, compiled server.\ncommand = \"node\"\nargs = [\"/absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js\"]\ncwd = \"/absolute/path/to/ComputerIntent\"",
+            "openclaw mcp add lhic-computer-use --command node --arg \"$PWD/apps/mcp-server/dist/index.js\" --cwd \"$PWD\"\n\nopenclaw mcp doctor lhic-computer-use --probe",
+            "# ~/.hermes/config.yaml\nmcp_servers:\n  lhic_computer_use:\n    command: node\n    args:\n      - /absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js\n    env:\n      LHIC_MEMORY_DATABASE: /absolute/path/to/ComputerIntent/.lhic/skills.sqlite\n    timeout: 45\n    connect_timeout: 20\n    supports_parallel_tool_calls: false",
+            "agy plugin validate .agents/plugins/lhic-computer-use\nnpx @pinyencheng/lhic mcp config antigravity \"$PWD\"\n\n# Review the printed JSON, add it to Antigravity, restart, then run /mcp.",
+            "lhic_runtime_status\nlhic_browser_start\nlhic_browser_observe\nlhic_browser_act  # exactly one: navigate, click, fill, select, press, or wait\nlhic_browser_observe\nlhic_browser_close"
         ],
         tutoStepsProd: [
             { title: "生產 Docker 沙箱配置", desc: "在正式環境中使用 Docker 進行物理硬隔離與權限限縮限制。" },
@@ -90,9 +96,9 @@ const i18nPage = {
             { title: "高風險指令人類簽章驗收", desc: "在生產模式下，任何高風險動作必須帶有第三方簽章授權，經 Ed25519 金鑰比對無誤後才允許在 Fast Path 執行。" }
         ],
         tutoCodesProd: [
-            "# 驗證生產環境配置與預檢\nnpx lhic preflight",
+            "# 驗證生產環境配置與預檢\nnpx @pinyencheng/lhic preflight",
             "# 建立容器並以生產配置預檢\ndocker build -t lhic-prod -f apps/cli/Dockerfile .\ndocker run --rm -it lhic-prod lhic run preflight --strict",
-            "# 傳入動作檔與人類簽章檔案進行嚴格驗簽執行\nnpx lhic run action action.json signature.sig"
+            "# 傳入動作檔與人類簽章檔案進行嚴格驗簽執行\nnpx @pinyencheng/lhic run action action.json signature.sig"
         ],
         benchTag: "Performance & Testing",
         benchTitle: "基準測試與抗變性驗證",
@@ -178,16 +184,16 @@ const i18nPage = {
         tutoTag: "Detailed Guide",
         tutoTitle: "Detailed User Guide",
         tutoSubtitle: "From local setup to production deployments, learn how to leverage LHIC's secure automation capabilities.",
-        tutoTabs: ["Installation & Init", "CLI Development", "MCP Agent Setup", "Production Config"],
+        tutoTabs: ["Installation & Init", "CLI Development", "AI Harness Setup", "Production Config"],
         tutoStepsInstall: [
-            { title: "Install Dependencies & Build", desc: "Project requires Node.js 24 (due to native node:sqlite skill memory database)." },
+            { title: "Start LHIC with npx", desc: "Use Node.js 24 or later; no global LHIC installation is required." },
             { title: "Install Playwright Webdriver", desc: "Install Playwright Chromium browser driver for the automation runtime." },
-            { title: "Run Regression Smoke Suite", desc: "Run formatter, lints and unit tests to ensure stability." }
+            { title: "Verify the Local Runtime", desc: "Confirm the prerequisites for browser automation and desktop control are ready." }
         ],
         tutoCodesInstall: [
-            "# Clone repo, install dependencies, and build TypeScript\ngit clone https://github.com/chengmatt416/ComputerIntent.git\ncd ComputerIntent\nnpm install\nnpm run build",
-            "npm run pw:install",
-            "# Run formatter, lints, and unit tests\nnpm run format\nnpm run lint\nnpm test"
+            "# No global installation required\nnpx @pinyencheng/lhic start",
+            "npx playwright@1.61.1 install chromium",
+            "npx @pinyencheng/lhic preflight\nnpx @pinyencheng/lhic global doctor"
         ],
         tutoStepsCli: [
             { title: "Run Semantic Action", desc: "Run compiled CLI passing semantic action JSON files:" },
@@ -195,19 +201,25 @@ const i18nPage = {
             { title: "Resilience Ablation Simulator", desc: "Evaluate resilient semantic locators using localized ablation simulation:" }
         ],
         tutoCodesCli: [
-            "# Execute specific semantic action task\nnpx lhic run action action.json",
-            "# Audit trace logs for security and validation status\nnpx lhic trace inspect trace.jsonl",
-            "# Run 100 ablation test iterations for selector resilience using seed 20260715\nnpx lhic bench simulate resilience 100 20260715"
+            "# Execute specific semantic action task\nnpx @pinyencheng/lhic run action action.json",
+            "# Audit trace logs for security and validation status\nnpx @pinyencheng/lhic trace inspect path/to/trace.jsonl",
+            "# Run 100 ablation test iterations for selector resilience using seed 20260715\nnpx @pinyencheng/lhic bench simulate resilience 100 20260715"
         ],
         tutoStepsMcp: [
-            { title: "Validate Agent Integration", desc: "Validate MCP harness configuration using Antigravity (agy) tool CLI:" },
-            { title: "Start Local MCP Server", desc: "Expose standard JSON-RPC over stdio MCP endpoint:" },
-            { title: "Pair Program with Agents", desc: "Pair program using Cursor / Windsurf / Claude Desktop with LHIC tools." }
+            { title: "Build and preflight the local runtime", desc: "Run the AI harness and Chromium on the same machine. Build the MCP server from this checkout once; all subsequent CLI use and verification run through npx." },
+            { title: "Use the compiled stdio MCP entrypoint", desc: "Each MCP server process owns one fresh Chromium session and serializes operations in arrival order. Let the harness launch <code>node</code> directly; do not use <code>npm run</code>, whose lifecycle output can corrupt the MCP JSON stdio stream." },
+            { title: "Register and live-probe OpenClaw", desc: "From the repository root, save LHIC as an OpenClaw-managed local MCP server, then run a live probe to prove it starts and exposes its tools." },
+            { title: "Configure Hermes as an MCP server", desc: "Add LHIC under <code>mcp_servers</code> in <code>~/.hermes/config.yaml</code>. Preserve its serialized session model and give its redacted skill and selector memory a local SQLite path." },
+            { title: "Use the Antigravity plugin (optional)", desc: "This repository includes an Antigravity plugin. Validate it, generate a reviewable configuration snippet, add it to the harness, and confirm the connection with <code>/mcp</code> after restarting." },
+            { title: "Run your first verifiable task", desc: "Ask the harness to use the tools in this order. After every action, check <code>result.success</code>, verifier evidence, and returned state; high- or unknown-risk work still requires human approval." }
         ],
         tutoCodesMcp: [
-            "# Validate plugin configuration conforms to Antigravity spec\nagy plugin validate .agents/plugins/lhic-computer-use",
-            "# Start local MCP server\nnpx lhic-mcp",
-            "// Configuration schema for external AI agents like Antigravity\n{\n  \"mcpServers\": {\n    \"lhic-computer-use\": {\n      \"command\": \"npx\",\n      \"args\": [\n        \"lhic-mcp\"\n      ],\n      \"cwd\": \"/absolute/path/to/ComputerIntent\"\n    }\n  }\n}"
+            "npm ci\nnpm run build\nnpx playwright@1.61.1 install chromium\nnpx @pinyencheng/lhic preflight",
+            "# Every harness points at this local, compiled server.\ncommand = \"node\"\nargs = [\"/absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js\"]\ncwd = \"/absolute/path/to/ComputerIntent\"",
+            "openclaw mcp add lhic-computer-use --command node --arg \"$PWD/apps/mcp-server/dist/index.js\" --cwd \"$PWD\"\n\nopenclaw mcp doctor lhic-computer-use --probe",
+            "# ~/.hermes/config.yaml\nmcp_servers:\n  lhic_computer_use:\n    command: node\n    args:\n      - /absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js\n    env:\n      LHIC_MEMORY_DATABASE: /absolute/path/to/ComputerIntent/.lhic/skills.sqlite\n    timeout: 45\n    connect_timeout: 20\n    supports_parallel_tool_calls: false",
+            "agy plugin validate .agents/plugins/lhic-computer-use\nnpx @pinyencheng/lhic mcp config antigravity \"$PWD\"\n\n# Review the printed JSON, add it to Antigravity, restart, then run /mcp.",
+            "lhic_runtime_status\nlhic_browser_start\nlhic_browser_observe\nlhic_browser_act  # exactly one: navigate, click, fill, select, press, or wait\nlhic_browser_observe\nlhic_browser_close"
         ],
         tutoStepsProd: [
             { title: "Hardened Dockerfile Setup", desc: "Use multi-stage production Docker configurations for sandbox isolation." },
@@ -215,9 +227,9 @@ const i18nPage = {
             { title: "Cryptographic Signature Sign-off", desc: "Enforce Ed25519 signature checks for high-risk actions in production:" }
         ],
         tutoCodesProd: [
-            "# Run production environment preflight checks\nnpx lhic preflight",
+            "# Run production environment preflight checks\nnpx @pinyencheng/lhic preflight",
             "# Build container and run checks under production isolation\ndocker build -t lhic-prod -f apps/cli/Dockerfile .\ndocker run --rm -it lhic-prod lhic run preflight --strict",
-            "# Execute with strict Ed25519 cryptographic signature verification\nnpx lhic run action action.json signature.sig"
+            "# Execute with strict Ed25519 cryptographic signature verification\nnpx @pinyencheng/lhic run action action.json signature.sig"
         ],
         benchTag: "Performance & Testing",
         benchTitle: "Benchmarks & Validation",

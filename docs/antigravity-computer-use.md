@@ -9,9 +9,10 @@ existing policy-controlled Playwright executor.
 agy → LHIC MCP tools → semantic browser action → Playwright → verifier evidence + redacted trace
 ```
 
-The integration is intentionally browser-only. It does not automate arbitrary
-macOS desktop applications, and it does not use a screenshot-to-model or
-raw-coordinate loop.
+This MCP integration is intentionally browser-only. The CLI separately offers
+approved native global-desktop actions for macOS, Windows, and Linux; those
+actions are not exposed through this external-agent MCP surface. The browser
+integration does not use a screenshot-to-model or raw-coordinate loop.
 
 ## Start it
 

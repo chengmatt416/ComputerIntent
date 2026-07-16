@@ -224,7 +224,7 @@ describe("LHIC computer-use MCP server", () => {
         learning: {
           enabled: true,
           databaseFile,
-          skillCount: 5,
+          skillCount: 6,
           selectorCandidateCount: 0,
         },
       });

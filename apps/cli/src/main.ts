@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readTraceEvents, summarizeTraceEvents } from "@lhic/trace";
+import { inspectGlobalControlCapability } from "@lhic/skills";
 
 import { runInternalBenchmark } from "./internal-benchmark.js";
 import {
@@ -31,6 +32,14 @@ async function main(argumentsList: string[]): Promise<void> {
     const report = await runPreflight();
     console.log(JSON.stringify(report, null, 2));
     if (!report.passed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (command === "global" && subcommand === "doctor") {
+    const report = await inspectGlobalControlCapability();
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.supported) {
       process.exitCode = 1;
     }
     return;
@@ -111,7 +120,7 @@ async function main(argumentsList: string[]): Promise<void> {
     return;
   }
   console.error(
-    "Usage: lhic start [memory-database] | lhic preflight | lhic run action <action-file> [approval-file] | lhic bench internal | lhic bench simulate resilience [task-count] [seed] | lhic bench readiness <workarena|webarena> | lhic bench validate-evidence <file> | lhic mcp config <antigravity|codex|claude-code|vscode> [workspace-root] | lhic trace inspect <trace-file>",
+    "Usage: lhic start [memory-database] | lhic preflight | lhic global doctor | lhic run action <action-file> [approval-file] | lhic bench internal | lhic bench simulate resilience [task-count] [seed] | lhic bench readiness <workarena|webarena> | lhic bench validate-evidence <file> | lhic mcp config <antigravity|codex|claude-code|vscode> [workspace-root] | lhic trace inspect <trace-file>",
   );
   process.exitCode = 1;
 }

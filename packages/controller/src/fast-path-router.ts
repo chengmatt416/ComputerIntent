@@ -1,4 +1,8 @@
-import type { SemanticAction, UserIntent } from "@lhic/schema";
+import {
+  isGlobalComputerAction,
+  type SemanticAction,
+  type UserIntent,
+} from "@lhic/schema";
 import { evaluateRisk } from "@lhic/security";
 
 import type { IntentPrediction } from "./predictor.js";
@@ -49,6 +53,14 @@ export class FastPathRouter {
       };
     }
     for (const action of actions) {
+      if (isGlobalComputerAction(action)) {
+        return {
+          path: "ask_user",
+          reason:
+            "Global desktop actions require an explicit matching human approval.",
+          confidence: prediction.confidence,
+        };
+      }
       const policy = evaluateRisk(action);
       if (policy.requiresConfirmation) {
         return {

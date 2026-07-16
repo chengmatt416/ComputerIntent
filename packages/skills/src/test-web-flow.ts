@@ -1,4 +1,7 @@
-import type { SemanticAction, VerificationCondition } from "@lhic/schema";
+import type {
+  BrowserSemanticAction,
+  VerificationCondition,
+} from "@lhic/schema";
 import { isVerificationCondition } from "@lhic/schema";
 import { evaluateRisk, type ActionApproval } from "@lhic/security";
 import { PlaywrightDirectExecutor } from "@lhic/browser";
@@ -11,13 +14,15 @@ import {
 } from "./skill-types.js";
 
 export interface DurableWorkflowLookup {
-  get(taskId: string): {
-    lastCompletedStep: number;
-    url: string;
-    cookiesJson: string;
-    localStorageJson: string;
-    sessionStorageJson: string;
-  } | undefined;
+  get(taskId: string):
+    | {
+        lastCompletedStep: number;
+        url: string;
+        cookiesJson: string;
+        localStorageJson: string;
+        sessionStorageJson: string;
+      }
+    | undefined;
   save(state: {
     taskId: string;
     workflowName: string;
@@ -31,7 +36,7 @@ export interface DurableWorkflowLookup {
 }
 
 export interface TestWebFlowInput {
-  steps: SemanticAction[];
+  steps: BrowserSemanticAction[];
   successConditions: VerificationCondition[];
   stopBeforeHighRisk?: boolean;
   approvals?: Record<number, ActionApproval>;
@@ -39,7 +44,7 @@ export interface TestWebFlowInput {
 }
 
 function inlineCondition(
-  action: SemanticAction,
+  action: BrowserSemanticAction,
 ): VerificationCondition | undefined {
   if (
     !action.value ||
@@ -79,10 +84,15 @@ export async function testWebFlow(
         const cookies = JSON.parse(savedState.cookiesJson);
         await context.page.context().addCookies(cookies);
 
-        const isRealUrl = savedState.url && (savedState.url.startsWith("http://") || savedState.url.startsWith("https://"));
+        const isRealUrl =
+          savedState.url &&
+          (savedState.url.startsWith("http://") ||
+            savedState.url.startsWith("https://"));
 
         if (isRealUrl) {
-          await context.page.goto(savedState.url, { waitUntil: "domcontentloaded" });
+          await context.page.goto(savedState.url, {
+            waitUntil: "domcontentloaded",
+          });
         }
 
         await context.page.evaluate(
@@ -107,14 +117,19 @@ export async function testWebFlow(
               // Ignore security error on unique origin (about:blank)
             }
           },
-          { local: savedState.localStorageJson, session: savedState.sessionStorageJson },
+          {
+            local: savedState.localStorageJson,
+            session: savedState.sessionStorageJson,
+          },
         );
 
         if (isRealUrl) {
           await context.page.reload({ waitUntil: "domcontentloaded" });
         }
         startStepIndex = savedState.lastCompletedStep;
-        await trace.emit("test_web_flow_hydration_completed", { startStepIndex });
+        await trace.emit("test_web_flow_hydration_completed", {
+          startStepIndex,
+        });
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Hydration error";
         await trace.emit("test_web_flow_hydration_failed", { error: msg });
@@ -124,7 +139,9 @@ export async function testWebFlow(
 
   for (const [index, action] of input.steps.entries()) {
     if (index < startStepIndex) {
-      evidence.push(`Skipped step ${index + 1} (already completed and hydrated).`);
+      evidence.push(
+        `Skipped step ${index + 1} (already completed and hydrated).`,
+      );
       continue;
     }
 

@@ -16,5 +16,6 @@
     { "path": "../../packages/trace" },
     { "path": "../../packages/verifier" }
   ],
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

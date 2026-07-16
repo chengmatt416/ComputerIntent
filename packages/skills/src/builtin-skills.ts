@@ -44,4 +44,20 @@ export const builtinSkillDefinitions: readonly BuiltinSkillDefinition[] = [
       supportedActions: ["navigate", "click", "fill", "press", "wait"],
     },
   },
+  {
+    name: "global_computer",
+    definition: {
+      source: "builtin",
+      description:
+        "Execute an approved native macOS, Windows, or Linux desktop action and verify a window or process state.",
+      supportedActions: [
+        "os_click",
+        "os_type",
+        "os_press",
+        "os_launch",
+        "os_focus",
+      ],
+      requiresApproval: true,
+    },
+  },
 ];

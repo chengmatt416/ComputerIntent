@@ -170,5 +170,18 @@ describe("local controller", () => {
         requiresConfirmation: true,
       }).path,
     ).toBe("ask_user");
+    expect(
+      router.decide(lowPrediction, parseUserIntent("Search for books"), [
+        {
+          scope: "os",
+          type: "os_press",
+          intent: "press the approved key in the active application",
+          methodPreference: ["keyboard"],
+          riskLevel: "low",
+          key: "Enter",
+          verifier: { type: "active_window", application: "TextEdit" },
+        },
+      ]),
+    ).toMatchObject({ path: "ask_user" });
   });
 });

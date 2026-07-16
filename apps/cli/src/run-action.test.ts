@@ -67,4 +67,36 @@ describe("runActionFile", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("routes a global action through the approval boundary before native input", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lhic-run-action-"));
+    const actionPath = join(directory, "global.json");
+    try {
+      await writeFile(
+        actionPath,
+        JSON.stringify({
+          scope: "os",
+          type: "os_type",
+          intent: "type an approved value into the active editor",
+          methodPreference: ["keyboard"],
+          riskLevel: "high",
+          text: "must-not-be-typed-without-approval",
+          verifier: { type: "active_window", application: "TextEdit" },
+        }),
+      );
+
+      const result = await runActionFile(actionPath, undefined, {
+        LHIC_ENV: "test",
+        LHIC_TRACE_DIRECTORY: directory,
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        evidence: [],
+        error: expect.stringContaining("approval"),
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 import { chromium } from "playwright";
 
 import {
+  isGlobalComputerAction,
   isSemanticAction,
   type ActionExecutionResult,
   type SemanticAction,
@@ -14,6 +15,7 @@ import {
   type EnvironmentSource,
 } from "@lhic/security";
 import { createProductionExecutor } from "@lhic/browser";
+import { GlobalComputerExecutor } from "@lhic/skills";
 
 export async function runActionFile(
   actionFilePath: string,
@@ -24,12 +26,30 @@ export async function runActionFile(
   const approval = approvalFilePath
     ? await readActionApproval(approvalFilePath)
     : undefined;
+  const taskId = basename(actionFilePath).replace(/\.[^.]+$/, "");
+
+  if (isGlobalComputerAction(action)) {
+    const executor = new GlobalComputerExecutor({
+      taskId,
+      traceFilePath: join(
+        environment.LHIC_TRACE_DIRECTORY ?? "traces",
+        `${taskId}.jsonl`,
+      ),
+      approvalValidation: {
+        requireSignature: environment.LHIC_ENV === "production",
+        ...(environment.LHIC_APPROVAL_PUBLIC_KEY
+          ? { publicKey: environment.LHIC_APPROVAL_PUBLIC_KEY }
+          : {}),
+      },
+    });
+    return executor.execute(action, approval);
+  }
+
   const config = parseRuntimeConfig(environment);
   const browser = await chromium.launch({ headless: true });
 
   try {
     const page = await browser.newPage();
-    const taskId = basename(actionFilePath).replace(/\.[^.]+$/, "");
     const executor = createProductionExecutor(page, config, { taskId });
     return await executor.execute(action, approval);
   } finally {

@@ -20,10 +20,10 @@ import {
 } from "@lhic/browser";
 import { createMemoryDatabase, SelectorMemory, SkillStore } from "@lhic/memory";
 import {
-  isSemanticAction,
+  isBrowserSemanticAction,
   type ActionExecutionResult,
+  type BrowserSemanticAction,
   type NormalizedUIState,
-  type SemanticAction,
 } from "@lhic/schema";
 import {
   parseRuntimeConfig,
@@ -34,7 +34,7 @@ import { builtinSkillDefinitions } from "@lhic/skills";
 import { redactPII } from "@lhic/trace";
 
 const MCP_SERVER_VERSION = "0.1.0";
-const directComputerActionTypes = new Set<SemanticAction["type"]>([
+const directComputerActionTypes = new Set<BrowserSemanticAction["type"]>([
   "navigate",
   "click",
   "fill",
@@ -64,7 +64,7 @@ export interface ComputerUseSession {
   start(url?: string): Promise<ComputerUseStartResult>;
   observe(): Promise<ComputerUseSnapshot>;
   act(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
     approval?: ActionApproval,
   ): Promise<ComputerUseActionResult>;
   close(): Promise<void>;
@@ -116,7 +116,7 @@ export class SerializedComputerUseSession implements ComputerUseSession {
   }
 
   public act(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
     approval?: ActionApproval,
   ): Promise<ComputerUseActionResult> {
     return this.enqueue(() => this.session.act(action, approval));
@@ -185,7 +185,7 @@ export class PlaywrightComputerUseSession implements ComputerUseSession {
   }
 
   public async act(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
     approval?: ActionApproval,
   ): Promise<ComputerUseActionResult> {
     const { executor } = await this.ensureStartedSession();
@@ -566,8 +566,8 @@ export async function callComputerUseTool(
         return toolResult(await session.observe());
       case "lhic_browser_act": {
         const action = args?.action;
-        if (!isSemanticAction(action)) {
-          return toolError("action must be a valid SemanticAction.");
+        if (!isBrowserSemanticAction(action)) {
+          return toolError("action must be a valid browser SemanticAction.");
         }
         if (!directComputerActionTypes.has(action.type)) {
           return toolError(

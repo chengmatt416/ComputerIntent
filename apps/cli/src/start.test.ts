@@ -21,6 +21,7 @@ describe("startLocalRuntime", () => {
           "login",
           "search",
           "test_web_flow",
+          "global_computer",
         ],
       });
 

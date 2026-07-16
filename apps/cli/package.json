@@ -1,16 +1,35 @@
 {
-  "name": "@lhic/cli",
-  "version": "0.1.0",
+  "name": "@pinyencheng/lhic",
+  "version": "0.1.1",
+  "description": "Local-first browser and global desktop intent controller for macOS, Windows, and Linux.",
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "automation",
+    "browser",
+    "desktop",
+    "macos",
+    "windows",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chengmatt416/ComputerIntent.git"
+  },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "bin": {
-    "lhic": "./dist/main.js"
+    "lhic": "dist/main.js"
   },
   "scripts": {
     "build": "tsc -b",
-    "prepack": "npm run build && node ./scripts/prepare-package.mjs"
+    "prepack": "node ./scripts/clean-dist.mjs && npm run build && node ./scripts/prepare-package.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bundleDependencies": [
     "@lhic/browser",

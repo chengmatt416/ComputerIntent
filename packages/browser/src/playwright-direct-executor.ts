@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type {
   ActionExecutionResult,
   ActionMethod,
-  SemanticAction,
+  BrowserSemanticAction,
   TraceEvent,
 } from "@lhic/schema";
 import {
@@ -117,7 +117,7 @@ export class PlaywrightDirectExecutor {
   }
 
   public async execute(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
     approval?: ActionApproval,
   ): Promise<ActionExecutionResult> {
     const startedAt = performance.now();
@@ -212,7 +212,7 @@ export class PlaywrightDirectExecutor {
   }
 
   private async perform(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
     resolvedActivationTarget?: ResolvedTarget,
   ): Promise<{ method: ActionMethod; evidence: string[] }> {
     switch (action.type) {
@@ -308,7 +308,7 @@ export class PlaywrightDirectExecutor {
     }
   }
 
-  private async requireTarget(action: SemanticAction) {
+  private async requireTarget(action: BrowserSemanticAction) {
     if (!action.target) {
       throw new Error(`${action.type} action requires a target.`);
     }
@@ -321,7 +321,7 @@ export class PlaywrightDirectExecutor {
   }
 
   private async resolveActionTarget(
-    action: SemanticAction,
+    action: BrowserSemanticAction,
   ): Promise<ResolvedTarget | undefined> {
     if (
       !action.target ||

@@ -353,7 +353,7 @@
             <div class="tabs-list">
                 <button class="tab-btn active" onclick="switchTab(event, 'tab-install')">安裝與初始化</button>
                 <button class="tab-btn" onclick="switchTab(event, 'tab-cli')">CLI 開發使用</button>
-                <button class="tab-btn" onclick="switchTab(event, 'tab-mcp')">MCP 代理整合</button>
+                <button class="tab-btn" onclick="switchTab(event, 'tab-mcp')">AI Harness 整合</button>
                 <button class="tab-btn" onclick="switchTab(event, 'tab-prod')">生產安全配置</button>
             </div>
 
@@ -362,14 +362,13 @@
                 <div class="guide-steps">
                     <div class="guide-step">
                         <div class="guide-step-title">
-                            <span class="step-num">1</span>安裝專案依賴與建置
+                            <span class="step-num">1</span>使用 npx 啟動 LHIC
                         </div>
-                        <p>專案核心依賴 Node.js 24 (由於使用原生 <code>node:sqlite</code> 作為技能記憶資料庫)。</p>
+                        <p>需要 Node.js 24 以上版本；不必全域安裝 LHIC。</p>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
-                            <pre><code># 複製專案後安裝依賴並進行 TypeScript 編譯
-npm install
-npm run build</code></pre>
+                            <pre><code># 不需全域安裝
+npx @pinyencheng/lhic start</code></pre>
                         </div>
                     </div>
                     
@@ -380,21 +379,19 @@ npm run build</code></pre>
                         <p>安裝運行時所需的 Playwright Chromium 瀏覽器驅動。</p>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
-                            <pre><code>npm run pw:install</code></pre>
+                            <pre><code>npx playwright@1.61.1 install chromium</code></pre>
                         </div>
                     </div>
 
                     <div class="guide-step">
                         <div class="guide-step-title">
-                            <span class="step-num">3</span>執行基礎測試
+                            <span class="step-num">3</span>驗證本機執行環境
                         </div>
-                        <p>確保本地核心測試及格式化全部通過。</p>
+                        <p>確認瀏覽器自動化與桌面控制的必要條件皆已就緒。</p>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
-                            <pre><code># 執行格式化、語法檢查與單元測試
-npm run lint
-npm run typecheck
-npm test</code></pre>
+                            <pre><code>npx @pinyencheng/lhic preflight
+npx @pinyencheng/lhic global doctor</code></pre>
                         </div>
                     </div>
                 </div>
@@ -411,7 +408,7 @@ npm test</code></pre>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
                             <pre><code># 執行特定 semantic action 任務
-npx lhic run action action.json</code></pre>
+npx @pinyencheng/lhic run action action.json</code></pre>
                         </div>
                     </div>
 
@@ -423,7 +420,7 @@ npx lhic run action action.json</code></pre>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
                             <pre><code># 檢查指定追蹤日誌的健全度與風險遮蔽狀況
-npx lhic trace inspect path/to/trace.jsonl</code></pre>
+npx @pinyencheng/lhic trace inspect path/to/trace.jsonl</code></pre>
                         </div>
                     </div>
 
@@ -435,50 +432,105 @@ npx lhic trace inspect path/to/trace.jsonl</code></pre>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
                             <pre><code># 執行 100 次以指定 Seed (20260715) 生成的表單填寫消融測試
-npx lhic bench simulate resilience 100 20260715</code></pre>
+npx @pinyencheng/lhic bench simulate resilience 100 20260715</code></pre>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Tab 3: MCP -->
+            <!-- Tab 3: AI Harness / MCP -->
             <div id="tab-mcp" class="tab-pane">
                 <div class="guide-steps">
                     <div class="guide-step">
                         <div class="guide-step-title">
-                            <span class="step-num">1</span>註冊與驗證外掛程式
+                            <span class="step-num">1</span>建置並預檢本機執行環境
                         </div>
-                        <p>利用 Antigravity (<code>agy</code>) 的外掛機制註冊本地 MCP 伺服器組件。</p>
+                        <p>AI harness 與 Chromium 必須在同一台電腦執行。MCP server 尚需由此 checkout 建置一次；後續的 CLI 使用與驗證則透過 npx 執行。</p>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
-                            <pre><code># 驗證外掛設定是否符合 Antigravity 規格
-agy plugin validate .agents/plugins/lhic-computer-use</code></pre>
+                            <pre><code>npm ci
+npm run build
+npx playwright@1.61.1 install chromium
+npx @pinyencheng/lhic preflight</code></pre>
                         </div>
                     </div>
 
                     <div class="guide-step">
                         <div class="guide-step-title">
-                            <span class="step-num">2</span>啟動 MCP 狀態伺服器
+                            <span class="step-num">2</span>使用已編譯的 stdio MCP 進入點
                         </div>
-                        <p>不要使用 <code>npm run</code> 啟動以防 Lifecycle 雜訊污染 JSON-RPC 通訊協定。</p>
+                        <p>每個 MCP server process 管理一個新的 Chromium 工作階段，並依到達順序序列化操作。請讓 harness 直接啟動 <code>node</code>；不要使用 <code>npm run</code>，避免 Lifecycle 輸出污染 MCP 的 JSON stdio 通訊協定。</p>
                         <div class="code-container">
                             <button class="btn-copy" onclick="copyCode(this)">複製</button>
-                            <pre><code># 啟動本地 MCP 服務
-npx lhic-mcp</code></pre>
+                            <pre><code># Every harness points at this local, compiled server.
+command = "node"
+args = ["/absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js"]
+cwd = "/absolute/path/to/ComputerIntent"</code></pre>
                         </div>
                     </div>
 
                     <div class="guide-step">
                         <div class="guide-step-title">
-                            <span class="step-num">3</span>介面整合驗證
+                            <span class="step-num">3</span>在 OpenClaw 註冊並即時驗證
                         </div>
-                        <p>在 Antigravity 聊天介面中，輸入 <code>/mcp</code> 檢視並確認 <code>lhic-computer-use</code> 提供的 4 項工具已連線成功：</p>
-                        <ul style="margin-left: 24px; margin-top: 10px; color: var(--text-muted); font-size: 0.9rem;">
-                            <li><code>lhic_browser_start</code>: 建立瀏覽器視窗</li>
-                            <li><code>lhic_browser_observe</code>: 回傳排除了敏感輸入欄位內容的 DOM/Accessibility 樹形狀態</li>
-                            <li><code>lhic_browser_act</code>: 執行一項經過安全策略校驗的 SemanticAction</li>
-                            <li><code>lhic_browser_close</code>: 釋放並關閉 Chromium 實例</li>
-                        </ul>
+                        <p>在專案根目錄執行以下命令，將 LHIC 儲存為 OpenClaw 管理的本機 MCP server，然後以 live probe 確認它能啟動並列出工具。</p>
+                        <div class="code-container">
+                            <button class="btn-copy" onclick="copyCode(this)">複製</button>
+                            <pre><code>openclaw mcp add lhic-computer-use --command node --arg "$PWD/apps/mcp-server/dist/index.js" --cwd "$PWD"
+
+openclaw mcp doctor lhic-computer-use --probe</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="guide-step">
+                        <div class="guide-step-title">
+                            <span class="step-num">4</span>在 Hermes 設定 MCP server
+                        </div>
+                        <p>在 <code>~/.hermes/config.yaml</code> 的 <code>mcp_servers</code> 中新增 LHIC。保留單一序列化工作階段設定，並使用本機 SQLite 路徑保存經遮蔽的技能與選擇器記憶。</p>
+                        <div class="code-container">
+                            <button class="btn-copy" onclick="copyCode(this)">複製</button>
+                            <pre><code># ~/.hermes/config.yaml
+mcp_servers:
+  lhic_computer_use:
+    command: node
+    args:
+      - /absolute/path/to/ComputerIntent/apps/mcp-server/dist/index.js
+    env:
+      LHIC_MEMORY_DATABASE: /absolute/path/to/ComputerIntent/.lhic/skills.sqlite
+    timeout: 45
+    connect_timeout: 20
+    supports_parallel_tool_calls: false</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="guide-step">
+                        <div class="guide-step-title">
+                            <span class="step-num">5</span>以 Antigravity 外掛方式使用（選用）
+                        </div>
+                        <p>此專案已包含 Antigravity 外掛。驗證外掛後，產生可供審閱的設定片段，貼入 harness 設定並在重啟後用 <code>/mcp</code> 確認連線。</p>
+                        <div class="code-container">
+                            <button class="btn-copy" onclick="copyCode(this)">複製</button>
+                            <pre><code>agy plugin validate .agents/plugins/lhic-computer-use
+npx @pinyencheng/lhic mcp config antigravity "$PWD"
+
+# Review the printed JSON, add it to Antigravity, restart, then run /mcp.</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="guide-step">
+                        <div class="guide-step-title">
+                            <span class="step-num">6</span>執行第一個可驗證任務
+                        </div>
+                        <p>請 harness 依序使用以下工具。每個動作後都要檢查 <code>result.success</code>、驗證證據與回傳狀態；高風險或未知風險動作仍需要人類核准。</p>
+                        <div class="code-container">
+                            <button class="btn-copy" onclick="copyCode(this)">複製</button>
+                            <pre><code>lhic_runtime_status
+lhic_browser_start
+lhic_browser_observe
+lhic_browser_act  # exactly one: navigate, click, fill, select, press, or wait
+lhic_browser_observe
+lhic_browser_close</code></pre>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -496,7 +548,7 @@ npx lhic-mcp</code></pre>
                             <pre><code># 驗證生產環境配置與預檢
 LHIC_ENV=production \
 LHIC_ALLOWED_ORIGINS=https://app.example.com \
-npx lhic preflight</code></pre>
+npx @pinyencheng/lhic preflight</code></pre>
                         </div>
                     </div>
 
@@ -527,7 +579,7 @@ docker run --rm \
 LHIC_ENV=production \
 LHIC_ALLOWED_ORIGINS=https://app.example.com \
 LHIC_APPROVAL_PUBLIC_KEY="$(cat approval-authority-public.pem)" \
-npx lhic run action action.json approval.json</code></pre>
+npx @pinyencheng/lhic run action action.json approval.json</code></pre>
                         </div>
                     </div>
                 </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNormalizedUIState,
+  isGlobalComputerAction,
   isRiskLevel,
   isSemanticAction,
   isTraceEvent,
@@ -73,6 +74,31 @@ describe("core schema contracts", () => {
         intent: "continue",
         methodPreference: ["unsupported-method"],
         riskLevel: "low",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a verified global computer action and rejects incomplete input", () => {
+    const action: SemanticAction = {
+      scope: "os",
+      type: "os_type",
+      intent: "type a documented value into the active editor",
+      methodPreference: ["keyboard"],
+      riskLevel: "high",
+      text: "approved text",
+      verifier: {
+        type: "active_window",
+        application: "TextEdit",
+      },
+    };
+
+    expect(isGlobalComputerAction(action)).toBe(true);
+    expect(isSemanticAction(action)).toBe(true);
+    expect(
+      isGlobalComputerAction({
+        ...action,
+        verifier: { type: "active_window" },
+        text: undefined,
       }),
     ).toBe(false);
   });
