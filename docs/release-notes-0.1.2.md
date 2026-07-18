@@ -17,6 +17,15 @@ Git tag, and GitHub Release all succeed.
 - Adds reproducible package checks: `npm run package:smoke` validates the
   local tarball, and `npm run package:published-smoke -- 0.1.2` validates the
   actual registry package from an isolated `npx` environment after publishing.
+- Adds `lhic install cli`, which globally installs the complete CLI and its
+  matching Playwright Chromium runtime, plus `lhic install desktop`, which
+  installs a SHA-256-verified native Control Center release for the local
+  platform.
+- Adds the public `lhic` npm compatibility entry so `npx lhic` invokes the
+  complete scoped CLI.
+- Replaces the invalid unsigned macOS bundle with a complete ad-hoc-signed
+  development build and adds a fail-closed Developer ID/notarization release
+  path. Public macOS release assets must pass `spctl` before upload.
 - Documents the safe Fast Path boundary, reproducibility procedure,
   benchmark scope, threat model, Judge Guide, and Devpost evidence gaps.
 
@@ -29,10 +38,19 @@ Git tag, and GitHub Release all succeed.
 
 ## Required publication evidence
 
-Before marking this release complete, publish exactly `0.1.2`, run:
+Before marking this release complete, publish the scoped CLI first and then
+the compatibility entry, both at exactly `0.1.2`:
+
+```bash
+npm publish --workspace @pinyencheng/lhic --access public
+npm publish --workspace lhic --access public
+```
+
+Then run both registry checks:
 
 ```bash
 npm run package:published-smoke -- 0.1.2
+npm run package:published-alias-smoke -- 0.1.2
 ```
 
 Then create an immutable `v0.1.2` Git tag and GitHub Release using these notes,

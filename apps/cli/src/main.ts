@@ -36,6 +36,7 @@ import {
   runPublicWebTraining,
 } from "./public-web-training.js";
 import { runGameTrainingCommand } from "./game-training.js";
+import { installCliRuntime, installDesktopApplication } from "./installer.js";
 import {
   cliUsage,
   createTerminalPrompter,
@@ -73,6 +74,16 @@ async function runCommand(
   const [command, subcommand, argument] = argumentsList;
   if (command === "start") {
     const result = await startLocalRuntime(subcommand);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (command === "install" && subcommand === "cli") {
+    const result = await installCliRuntime();
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (command === "install" && subcommand === "desktop") {
+    const result = await installDesktopApplication();
     console.log(JSON.stringify(result, null, 2));
     return;
   }

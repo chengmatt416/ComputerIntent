@@ -11,10 +11,12 @@ import platform
 import sys
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 
 REQUIRED_PACKAGES = ("torch", "numpy", "PIL", "mss", "pyautogui", "pynput")
+MIN_TRAINING_SAMPLES = 16
 
 
 def decode_request(value: str) -> dict[str, Any]:
@@ -67,8 +69,86 @@ def import_training_dependencies() -> tuple[Any, Any, Any]:
     return np, torch, Image
 
 
-def build_model(torch: Any, core: str) -> Any:
+def build_model(torch: Any, core: str, model_type: str = "cnn") -> Any:
     history, _, _, _ = model_spec(core)
+
+    if model_type == "gru":
+        class GRUPolicy(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.single_frame_extractor = torch.nn.Sequential(
+                    torch.nn.Conv2d(3, 32, kernel_size=5, stride=2),
+                    torch.nn.ReLU(),
+                    torch.nn.Conv2d(32, 64, kernel_size=3, stride=2),
+                    torch.nn.ReLU(),
+                    torch.nn.Conv2d(64, 64, kernel_size=3, stride=2),
+                    torch.nn.ReLU(),
+                    torch.nn.AdaptiveAvgPool2d((4, 4)),
+                    torch.nn.Flatten(),
+                    torch.nn.Linear(64 * 4 * 4, 256),
+                    torch.nn.ReLU(),
+                )
+                self.history = history
+                self.gru = torch.nn.GRU(input_size=256, hidden_size=256, batch_first=True)
+                self.movement = torch.nn.Linear(256, 9)
+                self.fire = torch.nn.Linear(256, 2)
+                self.axis_x = torch.nn.Linear(256, 7 if core == "3d" else 9)
+                self.axis_y = torch.nn.Linear(256, 7 if core == "3d" else 9)
+
+            def forward(self, frames: Any) -> tuple[Any, ...]:
+                batch_size = frames.size(0)
+                # Reshape to treat history frames as sequential steps
+                reshaped = frames.view(batch_size * self.history, 3, frames.size(2), frames.size(3))
+                features = self.single_frame_extractor(reshaped)
+                features = features.view(batch_size, self.history, 256)
+                gru_out, _ = self.gru(features)
+                last_features = gru_out[:, -1, :]
+                values: list[Any] = [self.movement(last_features), self.fire(last_features)]
+                values.extend([self.axis_x(last_features), self.axis_y(last_features)])
+                return tuple(values)
+
+        return GRUPolicy()
+
+    if model_type == "vit":
+        class ViTPolicy(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.history = history
+                self.patch_size = 8
+                self.emb_size = 128
+                in_channels = history * 3
+                self.patch_proj = torch.nn.Conv2d(in_channels, self.emb_size, kernel_size=self.patch_size, stride=self.patch_size)
+                # Max patches: 256 for 128x128, + 1 cls token = 257
+                self.pos_emb = torch.nn.Parameter(torch.zeros(1, 257, self.emb_size))
+                self.cls_token = torch.nn.Parameter(torch.zeros(1, 1, self.emb_size))
+                encoder_layer = torch.nn.TransformerEncoderLayer(
+                    d_model=self.emb_size, nhead=4, dim_feedforward=256, batch_first=True, activation='relu'
+                )
+                self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=2)
+                self.mlp_head = torch.nn.Sequential(
+                    torch.nn.Linear(self.emb_size, 256),
+                    torch.nn.ReLU()
+                )
+                self.movement = torch.nn.Linear(256, 9)
+                self.fire = torch.nn.Linear(256, 2)
+                self.axis_x = torch.nn.Linear(256, 7 if core == "3d" else 9)
+                self.axis_y = torch.nn.Linear(256, 7 if core == "3d" else 9)
+
+            def forward(self, frames: Any) -> tuple[Any, ...]:
+                patches = self.patch_proj(frames)
+                patches = patches.flatten(2).transpose(1, 2)
+                batch_size = patches.size(0)
+                cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+                x = torch.cat((cls_tokens, patches), dim=1)
+                x = x + self.pos_emb[:, :x.size(1), :]
+                x = self.transformer(x)
+                cls_rep = x[:, 0]
+                features = self.mlp_head(cls_rep)
+                values: list[Any] = [self.movement(features), self.fire(features)]
+                values.extend([self.axis_x(features), self.axis_y(features)])
+                return tuple(values)
+
+        return ViTPolicy()
 
     class Policy(torch.nn.Module):
         def __init__(self) -> None:
@@ -141,8 +221,10 @@ def load_dataset(request: dict[str, Any], np: Any, Image: Any) -> tuple[Any, Any
         raise ValueError("dataset does not match the expected preprocessing version")
     history, width, height, _ = model_spec(core)
     samples = data.get("samples")
-    if not isinstance(samples, list) or not samples:
-        raise ValueError("dataset must contain at least one recorded sample")
+    if not isinstance(samples, list) or len(samples) < MIN_TRAINING_SAMPLES:
+        raise ValueError(
+            f"dataset must contain at least {MIN_TRAINING_SAMPLES} recorded samples"
+        )
     source_frames: list[Any] = []
     movement: list[int] = []
     fire: list[int] = []
@@ -205,7 +287,7 @@ def fit(request: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("fit requires datasetPath and artifactDirectory")
     loaded = load_dataset(request, np, Image)
     frames, movement, fire, look_x, look_y, rewards = loaded
-    model = build_model(torch, core)
+    model = build_model(torch, core, str(request.get("modelType", "cnn")))
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
     frame_tensor = torch.tensor(frames, dtype=torch.float32)
     movement_tensor = torch.tensor(movement, dtype=torch.long)
@@ -225,6 +307,7 @@ def fit(request: dict[str, Any]) -> dict[str, Any]:
         loss = loss + torch.nn.functional.cross_entropy(outputs[2], look_x_tensor)
         loss = loss + torch.nn.functional.cross_entropy(outputs[3], look_y_tensor)
         optimizer.zero_grad()
+        loss.integrate = 0 # Dummy modification to force update / track
         loss.backward()
         optimizer.step()
         behavior_loss = float(loss.item())
@@ -266,7 +349,7 @@ def smoke(request: dict[str, Any]) -> dict[str, Any]:
     _, torch, _ = import_training_dependencies()
     core = str(request.get("core"))
     history, width, height, _ = model_spec(core)
-    model = build_model(torch, core)
+    model = build_model(torch, core, str(request.get("modelType", "cnn")))
     output = model(torch.zeros((2, history * 3, height, width), dtype=torch.float32))
     return {
         "core": core,
@@ -305,16 +388,36 @@ def prediction_action(core: str, outputs: tuple[Any, ...]) -> dict[str, Any]:
     return action
 
 
-def predict(request: dict[str, Any]) -> dict[str, Any]:
-    np, torch, Image = import_training_dependencies()
+def load_policy(core: str, weights_file: Path, torch: Any, model_type: str = "cnn") -> Any:
+    if core not in ("2d", "3d"):
+        raise ValueError("core must be 2d or 3d")
+    if not weights_file.is_file():
+        raise ValueError("predict requires an existing weightsFile")
+    model = build_model(torch, core, model_type)
+    try:
+        state = torch.load(weights_file, map_location="cpu", weights_only=True)
+    except TypeError:
+        state = torch.load(weights_file, map_location="cpu")
+    model.load_state_dict(state)
+    model.eval()
+    return model
+
+
+def predict_loaded(
+    request: dict[str, Any],
+    core: str,
+    model: Any,
+    np: Any,
+    torch: Any,
+    Image: Any,
+) -> dict[str, Any]:
     core = str(request.get("core"))
-    weights_file = Path(str(request.get("weightsFile", ""))).resolve()
     frame_files = request.get("frameFiles")
     if not isinstance(frame_files, list) or not frame_files:
         raise ValueError("predict requires frameFiles")
     resolved_frames = [Path(str(value)).resolve() for value in frame_files]
-    if not weights_file.is_file() or any(not frame_file.is_file() for frame_file in resolved_frames):
-        raise ValueError("predict requires existing weightsFile and frameFiles")
+    if any(not frame_file.is_file() for frame_file in resolved_frames):
+        raise ValueError("predict requires existing frameFiles")
     history, width, height, _ = model_spec(core)
     if len(resolved_frames) != history:
         raise ValueError("predict frame history does not match this training core")
@@ -323,16 +426,49 @@ def predict(request: dict[str, Any]) -> dict[str, Any]:
         image = Image.open(frame_file).convert("RGB").resize((width, height))
         frames.append(np.asarray(image, dtype=np.float32).transpose(2, 0, 1) / 255.0)
     input_frames = torch.tensor(np.concatenate(frames, axis=0)[None, ...])
-    model = build_model(torch, core)
-    try:
-        state = torch.load(weights_file, map_location="cpu", weights_only=True)
-    except TypeError:
-        state = torch.load(weights_file, map_location="cpu")
-    model.load_state_dict(state)
-    model.eval()
     with torch.no_grad():
         outputs = model(input_frames)
     return {"action": prediction_action(core, outputs)}
+
+
+def predict(request: dict[str, Any]) -> dict[str, Any]:
+    np, torch, Image = import_training_dependencies()
+    core = str(request.get("core"))
+    weights_file = Path(str(request.get("weightsFile", ""))).resolve()
+    model = load_policy(core, weights_file, torch, str(request.get("modelType", "cnn")))
+    return predict_loaded(request, core, model, np, torch, Image)
+
+
+def serve() -> None:
+    loaded: tuple[str, Any, Any, Any, Any] | None = None
+    for line in sys.stdin:
+        try:
+            request = json.loads(line)
+            if not isinstance(request, dict):
+                raise ValueError("policy-worker request must be an object")
+            command = request.get("command")
+            if command == "close":
+                print(json.dumps({"closed": True}, separators=(",", ":")), flush=True)
+                return
+            if command == "load-policy":
+                np, torch, Image = import_training_dependencies()
+                core = str(request.get("core"))
+                weights_file = Path(str(request.get("weightsFile", ""))).resolve()
+                model = load_policy(core, weights_file, torch, str(request.get("modelType", "cnn")))
+                loaded = (core, model, np, torch, Image)
+                result: dict[str, Any] = {"ready": True, "core": core}
+            elif command == "predict":
+                if loaded is None:
+                    raise ValueError("policy worker has not loaded a policy")
+                core, model, np, torch, Image = loaded
+                if request.get("core") != core:
+                    raise ValueError("policy request belongs to a different training core")
+                result = predict_loaded(request, core, model, np, torch, Image)
+            else:
+                raise ValueError("unsupported policy-worker command")
+        except Exception as error:  # pragma: no cover - protocol boundary
+            result = {"error": str(error)}
+        print(json.dumps(result, separators=(",", ":")), flush=True)
 
 
 KEY_NAMES = {
@@ -342,6 +478,148 @@ KEY_NAMES = {
     "KeyD": "d",
     "Space": "space",
 }
+
+
+def desktop_key_code(key: Any) -> str | None:
+    char = getattr(key, "char", None)
+    if isinstance(char, str):
+        return {
+            "w": "KeyW",
+            "a": "KeyA",
+            "s": "KeyS",
+            "d": "KeyD",
+            " ": "Space",
+        }.get(char.lower())
+    if getattr(key, "name", None) == "space":
+        return "Space"
+    return None
+
+
+class DesktopInputRecorder:
+    def __init__(self, allowed_keys: list[str], capture_region: dict[str, int]) -> None:
+        try:
+            from pynput import keyboard, mouse
+        except ImportError as error:
+            raise RuntimeError("Desktop input recording dependency is unavailable.") from error
+        self.allowed_keys = set(allowed_keys)
+        self.capture_region = capture_region
+        self.keys: set[str] = set()
+        self.primary_down = False
+        self.fired_since_last_read = False
+        self.pointer_x = capture_region["x"] + capture_region["width"] / 2
+        self.pointer_y = capture_region["y"] + capture_region["height"] / 2
+        self.pointer_delta_x = 0.0
+        self.pointer_delta_y = 0.0
+        self.last_pointer: tuple[float, float] | None = None
+        self.lock = Lock()
+        self.keyboard_listener = keyboard.Listener(
+            on_press=self._on_key_press,
+            on_release=self._on_key_release,
+        )
+        self.mouse_listener = mouse.Listener(
+            on_move=self._on_move,
+            on_click=self._on_click,
+        )
+        self.keyboard_listener.start()
+        self.mouse_listener.start()
+
+    def _key_code(self, key: Any) -> str | None:
+        return desktop_key_code(key)
+
+    def _on_key_press(self, key: Any) -> None:
+        code = self._key_code(key)
+        if code in self.allowed_keys:
+            with self.lock:
+                self.keys.add(code)
+
+    def _on_key_release(self, key: Any) -> None:
+        code = self._key_code(key)
+        if code in self.allowed_keys:
+            with self.lock:
+                self.keys.discard(code)
+
+    def _on_move(self, x: float, y: float) -> None:
+        with self.lock:
+            if self.last_pointer is not None:
+                self.pointer_delta_x += x - self.last_pointer[0]
+                self.pointer_delta_y += y - self.last_pointer[1]
+            self.last_pointer = (x, y)
+            self.pointer_x = x
+            self.pointer_y = y
+
+    def _on_click(self, x: float, y: float, button: Any, pressed: bool) -> None:
+        if getattr(button, "name", None) != "left":
+            return
+        with self.lock:
+            self.pointer_x = x
+            self.pointer_y = y
+            self.primary_down = pressed
+            if pressed:
+                self.fired_since_last_read = True
+
+    def read(self) -> dict[str, Any]:
+        with self.lock:
+            value = {
+                "heldKeys": sorted(self.keys),
+                "primaryDown": self.primary_down or self.fired_since_last_read,
+                "pointerX": (self.pointer_x - self.capture_region["x"]) / self.capture_region["width"],
+                "pointerY": (self.pointer_y - self.capture_region["y"]) / self.capture_region["height"],
+                "pointerDeltaX": self.pointer_delta_x,
+                "pointerDeltaY": self.pointer_delta_y,
+            }
+            self.pointer_delta_x = 0.0
+            self.pointer_delta_y = 0.0
+            self.fired_since_last_read = False
+            return value
+
+    def close(self) -> None:
+        self.keyboard_listener.stop()
+        self.mouse_listener.stop()
+
+
+def desktop_record_serve() -> None:
+    recorder: DesktopInputRecorder | None = None
+    capture_region: dict[str, int] | None = None
+    try:
+        for line in sys.stdin:
+            try:
+                request = json.loads(line)
+                if not isinstance(request, dict):
+                    raise ValueError("desktop recorder request must be an object")
+                command = request.get("command")
+                if command == "close":
+                    if recorder is not None:
+                        recorder.close()
+                    print(json.dumps({"closed": True}, separators=(",", ":")), flush=True)
+                    return
+                if command == "start-record":
+                    allowed = request.get("allowedKeys")
+                    if not isinstance(allowed, list) or any(str(key) not in KEY_NAMES for key in allowed):
+                        raise ValueError("desktop recorder allowed keys are invalid")
+                    capture_region = desktop_region({"captureRegion": request.get("captureRegion")})
+                    recorder = DesktopInputRecorder([str(key) for key in allowed], capture_region)
+                    result: dict[str, Any] = {"ready": True}
+                elif command == "capture":
+                    if capture_region is None:
+                        raise ValueError("desktop recorder has not started")
+                    result = desktop_capture(
+                        {
+                            "captureRegion": capture_region,
+                            "frameFile": request.get("frameFile"),
+                        }
+                    )
+                elif command == "read-input":
+                    if recorder is None:
+                        raise ValueError("desktop recorder has not started")
+                    result = {"input": recorder.read()}
+                else:
+                    raise ValueError("unsupported desktop recorder command")
+            except Exception as error:  # pragma: no cover - protocol boundary
+                result = {"error": str(error)}
+            print(json.dumps(result, separators=(",", ":")), flush=True)
+    finally:
+        if recorder is not None:
+            recorder.close()
 
 
 def desktop_doctor() -> dict[str, Any]:
@@ -399,6 +677,18 @@ def allowed_desktop_keys(request: dict[str, Any]) -> tuple[list[str], list[str]]
     return active_keys, desired_keys
 
 
+def desktop_primary_state(request: dict[str, Any]) -> tuple[bool, bool, bool]:
+    primary_down = bool(request.get("primaryDown", False))
+    desired_primary = bool(request.get("desiredPrimaryDown", False))
+    primary_click = bool(request.get("primaryClick", False))
+    allow_primary_click = bool(request.get("allowPrimaryClick", False))
+    if (desired_primary or primary_click) and not allow_primary_click:
+        raise ValueError("desktop primary click is outside the approved control profile")
+    if desired_primary and primary_click:
+        raise ValueError("desktop primary click cannot be held and pulsed together")
+    return primary_down, desired_primary, primary_click
+
+
 def desktop_apply(request: dict[str, Any]) -> dict[str, Any]:
     try:
         import pyautogui
@@ -412,15 +702,14 @@ def desktop_apply(request: dict[str, Any]) -> dict[str, Any]:
     for key in desired:
         if key not in active:
             pyautogui.keyDown(KEY_NAMES[key])
-    primary_down = bool(request.get("primaryDown", False))
-    desired_primary = bool(request.get("desiredPrimaryDown", False))
-    if desired_primary and not bool(request.get("allowPrimaryClick", False)):
-        raise ValueError("desktop primary click is outside the approved control profile")
+    primary_down, desired_primary, primary_click = desktop_primary_state(request)
     if desired_primary != primary_down:
         if desired_primary:
             pyautogui.mouseDown(button="left")
         else:
             pyautogui.mouseUp(button="left")
+    if primary_click:
+        pyautogui.click(button="left")
     pointer = request.get("pointer")
     if isinstance(pointer, dict):
         mode = pointer.get("mode")
@@ -460,8 +749,19 @@ def desktop_release(request: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--request", required=True)
-    request = decode_request(parser.parse_args().request)
+    parser.add_argument("--request")
+    parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--desktop-serve", action="store_true")
+    arguments = parser.parse_args()
+    if arguments.serve:
+        serve()
+        return
+    if arguments.desktop_serve:
+        desktop_record_serve()
+        return
+    if not arguments.request:
+        raise ValueError("worker requires --request or --serve")
+    request = decode_request(arguments.request)
     command = request.get("command")
     if command == "doctor":
         result = doctor()

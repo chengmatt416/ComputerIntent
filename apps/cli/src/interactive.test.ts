@@ -132,6 +132,15 @@ describe("interactive CLI guidance", () => {
     ).resolves.toEqual(["gui", "mcp", "--no-open"]);
   });
 
+  it("guides a requested CLI or desktop installation", async () => {
+    await expect(
+      guideCliArguments(["install"], createPrompter(["desktop"])),
+    ).resolves.toEqual(["install", "desktop"]);
+    await expect(
+      guideCliArguments(["install", "cli"], createPrompter([])),
+    ).resolves.toEqual(["install", "cli"]);
+  });
+
   it("re-prompts after an invalid guided choice", async () => {
     await expect(
       guideCliArguments(["mcp", "config"], createPrompter(["other", "codex"])),

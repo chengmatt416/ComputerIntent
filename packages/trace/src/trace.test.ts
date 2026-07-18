@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  appendStageRouteEvent,
   appendTraceEvent,
   hashState,
   readTraceEvents,
@@ -79,6 +80,47 @@ describe("trace redaction and event log", () => {
     }
   });
 
+  it("records route decisions and budgets without model inputs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lhic-route-trace-"));
+    const filePath = join(directory, "events.jsonl");
+    try {
+      await appendStageRouteEvent(
+        filePath,
+        "task-1",
+        {
+          stage: "recover",
+          path: "slow_planner",
+          reason: "Selector changed for person@example.com",
+          confidence: 0.3,
+          profile: "balanced",
+          remainingBudget: {
+            maxSlowPathCalls: 0,
+            maxSlowPathInputChars: 11_900,
+            maxImageInputs: 0,
+            maxStages: 10,
+            maxWallClockMs: 59_000,
+          },
+          fallbackFrom: "local_recovery",
+        },
+        {
+          slowPathCalls: 1,
+          slowPathInputChars: 100,
+          imageInputs: 0,
+          slowPathLatencyMs: 500,
+          stages: 2,
+          wallClockMs: 1_000,
+        },
+      );
+      const raw = await readFile(filePath, "utf8");
+      expect(raw).not.toContain("person@example.com");
+      expect(await readTraceEvents(filePath)).toEqual([
+        expect.objectContaining({ type: "stage_routed" }),
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("hashes equivalent object states consistently", () => {
     expect(hashState({ b: 2, a: 1 })).toBe(hashState({ a: 1, b: 2 }));
     expect(hashState(undefined)).toHaveLength(64);
@@ -118,5 +160,23 @@ describe("trace redaction and event log", () => {
       incompleteActions: 1,
       eventsByRisk: { low: 2, high: 1 },
     });
+  });
+
+  it("redacts sensitive data using local NER-like heuristics", () => {
+    const redacted = redactPII({
+      nameInfo: "Hello, my name is Alice Cooper",
+      intro: "I am John Doe and I want to login as administrator",
+      credentialAssigned: "password = super_secret_pass_12345",
+      apiInfo: "key: my_personal_token_9999",
+      orgInfo: "Acme Corp. is a great enterprise",
+    });
+
+    expect(JSON.stringify(redacted)).toContain("[REDACTED_NAME]");
+    expect(JSON.stringify(redacted)).toContain("[REDACTED_SECRET]");
+    expect(JSON.stringify(redacted)).toContain("[REDACTED_ORG]");
+    expect(JSON.stringify(redacted)).not.toContain("Alice");
+    expect(JSON.stringify(redacted)).not.toContain("John");
+    expect(JSON.stringify(redacted)).not.toContain("super_secret_pass_12345");
+    expect(JSON.stringify(redacted)).not.toContain("Acme Corp.");
   });
 });

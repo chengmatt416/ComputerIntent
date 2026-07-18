@@ -13,6 +13,34 @@ and CI.
 The single-purpose shortcuts `lhic global`, `lhic bench simulate`, `lhic mcp`,
 and `lhic trace` select their only subcommand automatically.
 
+## Install the CLI or native Control Center
+
+Install the complete CLI, its npm dependencies, and the matching local
+Playwright Chromium runtime persistently:
+
+```bash
+npx @pinyencheng/lhic install cli
+```
+
+On macOS and Linux the command registers `~/.local/bin/lhic` in the active
+zsh/bash interactive shell configuration; open a new terminal before using `lhic` directly. `npx`
+always uses a temporary package directory, so use the public compatibility
+entry when a persistent global install is not wanted:
+
+```bash
+npx lhic preflight
+```
+
+Download and install the SHA-256-verified desktop application from the latest
+GitHub Release:
+
+```bash
+npx @pinyencheng/lhic install desktop
+```
+
+macOS installs the app to `~/Applications`, Linux installs a user-local
+AppImage and launcher, and Windows launches the release NSIS installer.
+
 ## Interactive learning demo
 
 Run the complete visible-browser demo with one provider API key and model:
@@ -65,8 +93,10 @@ Companion:
 npx @pinyencheng/lhic gui
 ```
 
-The Demo tab drives the same API-key, provider, Slow Path, learning, and Fast
-Path flow in a separate visible Chromium window. The MCP tab generates a
+The Demo tab drives the same API-key, provider, bounded Slow Path, and
+candidate-learning flow in a separate visible Chromium window. A candidate
+requires three independent verified runs plus an offline holdout before it can
+enter Fast Path. The MCP tab generates a
 client-specific local stdio configuration for Codex, Claude Code, VS Code, or
 Antigravity; review and paste it into the selected client yourself. It never
 rewrites MCP settings. Use `lhic gui mcp --no-open` to print a local GUI URL

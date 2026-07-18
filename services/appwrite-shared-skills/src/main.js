@@ -1,6 +1,11 @@
 import { Account, Client, ID, Query, TablesDB } from "node-appwrite";
 import { createHash } from "node:crypto";
 
+import {
+  controlConfigFromEnvironment,
+  handleControlPlane,
+} from "./control-plane.js";
+
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const phonePattern = /(?<!\w)(?:\+?\d[\d().\-\s]{7,}\d)(?!\w)/g;
 const tokenPattern =
@@ -47,6 +52,25 @@ export default async ({ req, res, error }) => {
       const payload = validateSubmission(parseBody(req));
       await submitSkill(tables, config, user.$id, payload);
       return res.json({ status: "pending" }, 202);
+    }
+    if (path.pathname.startsWith("/control/")) {
+      const controlConfig = { ...config, ...controlConfigFromEnvironment() };
+      const token = header(req, "x-lhic-judge-token");
+      const user =
+        isJudgeReadRoute(path.pathname) && token
+          ? undefined
+          : await authenticatedUser(req, config);
+      return handleControlPlane({
+        req,
+        res,
+        path,
+        method,
+        tables,
+        config: controlConfig,
+        user,
+        githubIdentity: () => githubIdentity(req, config),
+        judgeToken: () => token,
+      });
     }
     if (method === "GET" && path.pathname === "/auth/callback") {
       await receiveMagicCallback(tables, config, path.searchParams);
@@ -104,6 +128,39 @@ async function authenticatedUser(req, config) {
   } catch {
     throw new HttpError(401, "Shared skill sign-in is invalid or expired.");
   }
+}
+
+async function githubIdentity(req, config) {
+  const jwt = header(req, "x-appwrite-user-jwt");
+  if (!jwt) return undefined;
+  const client = new Client()
+    .setEndpoint(config.endpoint)
+    .setProject(config.projectId)
+    .setJWT(jwt);
+  try {
+    const identities = await new Account(client).listIdentities();
+    const github = identities.identities.find(
+      (identity) => identity.provider === "github",
+    );
+    if (typeof github?.providerUid !== "string") return undefined;
+    return {
+      githubUserId: github.providerUid,
+      ...(typeof github.providerEmail === "string" &&
+      github.providerEmail.trim()
+        ? { providerEmail: github.providerEmail }
+        : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function isJudgeReadRoute(pathname) {
+  return [
+    "/control/judge/session",
+    "/control/judge/catalog",
+    "/control/judge/policy-packages",
+  ].includes(pathname);
 }
 
 async function submitSkill(tables, config, authorId, payload) {
@@ -382,7 +439,10 @@ function publicError(message) {
 }
 
 function statusFor(error) {
-  return error instanceof HttpError ? error.status : 500;
+  return error instanceof HttpError ||
+    (isRecord(error) && Number.isInteger(error.status))
+    ? error.status
+    : 500;
 }
 
 class HttpError extends Error {

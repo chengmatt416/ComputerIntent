@@ -60,6 +60,7 @@ describe("demo learning", () => {
       const skill = await learnDemoSkill(
         new SkillStore(database),
         embeddingEngine,
+        "demo-learning-test-1",
         "Search notebooks for person@example.com",
         state,
         plan,
@@ -80,6 +81,15 @@ describe("demo learning", () => {
       expect(JSON.stringify(skill.definition)).not.toContain(
         "person@example.com",
       );
+      const learnedPlan = (skill.definition as { plan: BrowserExecutionPlan })
+        .plan;
+      expect(learnedPlan.requiredVariables).toEqual([
+        {
+          name: "input-1",
+          prompt: "Provide the value for fill search.",
+        },
+      ]);
+      expect(learnedPlan.steps[0]?.action.value).toBe("{{variables.input-1}}");
 
       const match = await findSimilarDemoSkill(
         new SkillStore(database),
@@ -87,8 +97,8 @@ describe("demo learning", () => {
         "Search a similar catalogue query",
         state,
       );
-      expect(match?.skill.name).toBe(skill.name);
-      expect(match?.similarity).toBe(1);
+      expect(skill).toMatchObject({ verifiedRunCount: 1, promoted: false });
+      expect(match).toBeUndefined();
     } finally {
       database.close();
     }

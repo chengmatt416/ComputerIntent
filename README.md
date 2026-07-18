@@ -15,7 +15,7 @@ model or MCP server.
 - **Global Desktop Control**: Executes approved native actions across macOS, Windows, and Linux: focus or launch apps, type, press hotkeys, and click. Every desktop action requires a matching human approval and a post-action window or process verifier.
 - **Semantic Locator Resilience**: In the included 100-task, five-layout local ablation, verified semantic targeting succeeds on all fixtures while the intentionally limited static-selector baseline succeeds on 20%; this is an 80-percentage-point controlled result, not a general web benchmark.
 - **Security & KMS Controls**:
-  - **KmsKeyManager**: Integrates AWS KMS, GCP KMS, and HashiCorp Vault key verification for high-risk actions.
+  - **KmsKeyManager**: Verifies Ed25519 approval keys from local configuration or explicitly configured GCP KMS / HashiCorp Vault. Missing, invalid, or unsupported resolvers fail closed; AWS requires a SigV4-authenticated resolver.
   - **AES-256-GCM Encryption**: Secure software-based database-level static encryption for sensitive user cookies and sessions.
   - **PII & Credential Guard**: Automatically redacts credentials, passwords, and personally identifiable information from all system traces.
 - **Enterprise Concurrency & Durability**:
@@ -81,7 +81,43 @@ file, trace, repository, screenshot, or demo recording.
 See the [0.1.2 release notes](docs/release-notes-0.1.2.md) for the exact
 release-candidate evidence and the remaining publication gates.
 
-### Published CLI commands (after the current release is verified)
+### npm CLI and desktop installation (after the current release is verified)
+
+`npx` fetches a package into a temporary execution directory; it does not add a
+command to your shell PATH. To install the complete scoped CLI, its npm
+dependencies, and the matching local Playwright Chromium runtime persistently,
+run this once:
+
+```bash
+npx @pinyencheng/lhic install cli
+```
+
+On macOS and Linux this creates `~/.local/bin/lhic` and adds that directory to
+your zsh/bash interactive shell configuration. Restart the terminal before using `lhic` directly. On
+Windows, npm's global bin directory is used; ensure the normal npm global bin
+path is available after restarting the terminal.
+
+The public `lhic` compatibility package is published after the scoped package,
+so the following always runs the same full CLI without a global install:
+
+```bash
+npx lhic preflight
+```
+
+Install the native Control Center for the current operating system and
+architecture with a SHA-256-verified GitHub Release asset. macOS installs to
+`~/Applications`, Linux installs a user-local AppImage and launcher, and
+Windows runs the release NSIS installer:
+
+```bash
+npx @pinyencheng/lhic install desktop
+```
+
+The desktop installer rejects assets without a matching entry in the release
+checksum manifest and does not require an administrator password on macOS or
+Linux.
+
+### Published CLI commands
 
 After the current npm release passes `npm run package:published-smoke -- 0.1.2`,
 initialize the local-first runtime and its
@@ -118,6 +154,24 @@ npx @pinyencheng/lhic gui mcp
 The companion binds only to loopback, requires a per-launch capability token,
 and does not modify MCP client configuration automatically.
 
+For the full native Control Center (Skills, task admission, MCP review, game
+training, security, and Judge Center), build and launch the Electron app:
+
+```bash
+npm run desktop:build
+npm run desktop:start
+```
+
+The Security panel stores only the selected local Slow Path budget profile in
+`.lhic/security-settings.json` (mode `0600`); provider credentials remain in
+the operating-system Keychain. Selecting `fast_only` prevents provider calls
+for new tasks. Interactive approvals, verifier evidence, redaction, and the
+model-free Fast Path are mandatory controls and cannot be disabled from the
+desktop app.
+
+See the [Desktop Control Center guide](docs/desktop-control-center.md) for the
+Appwrite GitHub-OAuth judge setup, local Keychain boundary, and packaging.
+
 Run preflight environment verification:
 
 ```bash
@@ -136,13 +190,21 @@ Global actions are always approval-gated, including low-risk labels. See the
 [global control guide](docs/global-control.md) for the JSON contract, platform
 requirements, and examples.
 
-Slow Path integrations can use `FastPathRouter.executeSlowPath(...)` with a
+Slow Path integrations can use a budgeted `MultiPathTaskController` with a
 `SlowPathLearningCoordinator`. When every proposed action has a successful
-execution result and non-empty verifier evidence, LHIC compiles the plan into a
-redacted skill and persists it in SQLite automatically. Successful direct DOM
-actions also add local selector-memory candidates; the MCP server exposes
-redacted `lhic_runtime_status`, `lhic_skills_list`, and
+execution result and non-empty verifier evidence, LHIC stores only a redacted
+candidate in SQLite. A candidate becomes Fast Path eligible only after three
+independent task IDs and a deterministic offline holdout pass. Successful
+direct DOM actions also add local selector-memory candidates; the MCP server
+exposes redacted `lhic_runtime_status`, `lhic_skills_list`, and
 `lhic_selector_memory_list` views for inspection.
+
+A completed `lhic_browser_execute_plan` MCP batch is also eligible for local
+Skill training when every step has execution and verifier evidence. LHIC stores
+a redacted, parameterized candidate only after the batch completes; individual
+MCP actions, approval pauses, and failed plans are excluded. A planner can
+specify or declare parameters before the batch starts, but the executor never
+calls a model while it runs.
 
 ### Optional public shared skills
 
