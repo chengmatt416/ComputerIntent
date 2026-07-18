@@ -16,6 +16,10 @@
     "url": "git+https://github.com/chengmatt416/LHIC.git"
   },
   "type": "module",
+  "exports": {
+    ".": "./dist/main.js",
+    "./dist/*": "./dist/*"
+  },
   "files": [
     "dist",
     "README.md",

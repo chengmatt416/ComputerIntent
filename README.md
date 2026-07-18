@@ -81,7 +81,43 @@ file, trace, repository, screenshot, or demo recording.
 See the [0.1.2 release notes](docs/release-notes-0.1.2.md) for the exact
 release-candidate evidence and the remaining publication gates.
 
-### Published CLI commands (after the current release is verified)
+### npm CLI and desktop installation (after the current release is verified)
+
+`npx` fetches a package into a temporary execution directory; it does not add a
+command to your shell PATH. To install the complete scoped CLI, its npm
+dependencies, and the matching local Playwright Chromium runtime persistently,
+run this once:
+
+```bash
+npx @pinyencheng/lhic install cli
+```
+
+On macOS and Linux this creates `~/.local/bin/lhic` and adds that directory to
+your zsh/bash interactive shell configuration. Restart the terminal before using `lhic` directly. On
+Windows, npm's global bin directory is used; ensure the normal npm global bin
+path is available after restarting the terminal.
+
+The public `lhic` compatibility package is published after the scoped package,
+so the following always runs the same full CLI without a global install:
+
+```bash
+npx lhic preflight
+```
+
+Install the native Control Center for the current operating system and
+architecture with a SHA-256-verified GitHub Release asset. macOS installs to
+`~/Applications`, Linux installs a user-local AppImage and launcher, and
+Windows runs the release NSIS installer:
+
+```bash
+npx @pinyencheng/lhic install desktop
+```
+
+The desktop installer rejects assets without a matching entry in the release
+checksum manifest and does not require an administrator password on macOS or
+Linux.
+
+### Published CLI commands
 
 After the current npm release passes `npm run package:published-smoke -- 0.1.2`,
 initialize the local-first runtime and its
