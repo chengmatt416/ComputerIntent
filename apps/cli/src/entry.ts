@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { runCli as runLegacyCli } from "./main.js";
 import { cliUsage } from "./interactive.js";
 import { parseMcpHarness } from "./mcp-harness-config.js";
@@ -76,7 +79,14 @@ if (isEntryPoint()) {
   void runCli(process.argv.slice(2));
 }
 
-function isEntryPoint(): boolean {
-  const executable = process.argv[1];
-  return Boolean(executable && import.meta.url === new URL(`file://${executable}`).href);
+export function isEntryPoint(
+  executablePath = process.argv[1],
+  modulePath = fileURLToPath(import.meta.url),
+): boolean {
+  if (!executablePath) return false;
+  try {
+    return realpathSync(executablePath) === realpathSync(modulePath);
+  } catch {
+    return false;
+  }
 }
