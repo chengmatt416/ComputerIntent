@@ -68,6 +68,8 @@ jobs:
       - run: npm run package:alias-smoke
       - name: Run desktop package
         shell: bash
+        env:
+          CSC_FOR_PULL_REQUEST: "true"
         run: |
           set -o pipefail
           npm run desktop:package 2>&1 | tee desktop-package.log
