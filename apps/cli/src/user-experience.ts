@@ -90,8 +90,7 @@ export async function runUserDoctor(
       ...(desktop.supported
         ? {}
         : {
-            fix:
-              "Browser automation remains available. Run `lhic global doctor` after granting the required OS permission or installing the platform dependency.",
+            fix: "Browser automation remains available. Run `lhic global doctor` after granting the required OS permission or installing the platform dependency.",
           }),
     });
   } catch (error) {
