@@ -18,9 +18,9 @@ const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
@@ -69,7 +69,7 @@ describe("user-friendly CLI reports", () => {
       preloadedSkills: ["search", "login"],
       mcpHarness: "codex",
       mcpReady: true,
-      mcpConfig: "[mcp_servers.lhic_computer_use]\ncommand = \"node\"\n",
+      mcpConfig: '[mcp_servers.lhic_computer_use]\ncommand = "node"\n',
       doctor,
       nextSteps: ["Restart Codex."],
     };
