@@ -23,7 +23,28 @@ jobs:
           python-version: "3.12"
       - run: npm ci
       - run: npm run pw:install
-      - run: npm run ci
+      - name: Check formatting
+        run: npm run format:check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Run TypeScript tests
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: Build packages
+        run: npm run build
+      - name: Run internal benchmark
+        run: npm run bench:internal
+      - name: Run system preflight
+        run: npm run preflight
+      - name: Audit production dependencies
+        run: npm run audit:prod
+      - name: Check documentation links
+        run: npm run check:docs
+      - name: Check release versions
+        run: npm run check:release-versions
+      - name: Scan for committed secrets
+        run: npm run scan:secrets
       - run: PYTHONPATH=benchmarks/agentlab python -m unittest discover -s benchmarks/agentlab/tests
       - run: python packages/game-training/python/test_worker.py
       - run: python -m py_compile benchmarks/agentlab/lhic_semantic_policy.py benchmarks/agentlab/lhic_agent.py benchmarks/agentlab/preflight.py benchmarks/agentlab/run_study.py
@@ -34,8 +55,8 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    matrix:
+      os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
