@@ -90,17 +90,13 @@ AppImage and launcher, and Windows launches the release NSIS installer.
 Start the local demonstration portal with one command:
 
 ```bash
-npx lhic demo
+npx @pinyencheng/lhic demo
 ```
 
 The portal lets you enter the browser task to demonstrate, its public HTTPS
 website, and the provider credentials/model to use. It opens a visible browser
 for the task, stores the provider key only in the operating-system Keychain,
-and keeps the portal on loopback. Use the scoped package if you prefer it:
-
-```bash
-npx @pinyencheng/lhic demo
-```
+and keeps the portal on loopback.
 
 Use `lhic demo --terminal` for the original terminal-guided learning flow.
 
@@ -110,7 +106,7 @@ loopback endpoint such as a local model server. Custom endpoint keys use a
 separate Keychain entry from the provider default.
 
 ```bash
-npx lhic demo --terminal --endpoint https://models.example.com/v1/responses
+npx @pinyencheng/lhic demo --terminal --endpoint https://models.example.com/v1/responses
 ```
 
 The CLI stores the selected provider key in the operating-system Keychain,
